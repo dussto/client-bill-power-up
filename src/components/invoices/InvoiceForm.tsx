@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -31,7 +30,7 @@ import { Invoice, InvoiceItem, Client } from "@/types";
 import { cn } from "@/lib/utils";
 
 const invoiceItemSchema = z.object({
-  id: z.string().optional(),
+  id: z.string(),
   description: z.string().min(1, "Description is required"),
   quantity: z.number().min(0.01, "Quantity must be greater than 0"),
   rate: z.number().min(0, "Rate cannot be negative"),
@@ -76,7 +75,25 @@ export default function InvoiceForm({ invoice, defaultClientId, onSuccess }: Inv
     return `INV-${year}${month}-${random}`;
   };
 
-  const defaultValues: Partial<InvoiceFormValues> = {
+  // Prepare default items with required fields
+  const prepareDefaultItems = (): InvoiceItem[] => {
+    if (invoice?.items && invoice.items.length > 0) {
+      return invoice.items.map(item => ({
+        ...item,
+        id: item.id // Ensure id is present
+      }));
+    }
+    
+    return [{
+      id: `item-${Date.now()}`,
+      description: "",
+      quantity: 1,
+      rate: 0,
+      amount: 0,
+    }];
+  };
+
+  const defaultValues: InvoiceFormValues = {
     id: invoice?.id,
     clientId: invoice?.clientId || defaultClientId || "",
     invoiceNumber: invoice?.invoiceNumber || generateInvoiceNumber(),
@@ -84,15 +101,7 @@ export default function InvoiceForm({ invoice, defaultClientId, onSuccess }: Inv
     dueDate: invoice?.dueDate 
       ? new Date(invoice.dueDate) 
       : new Date(new Date().setDate(new Date().getDate() + 14)),
-    items: invoice?.items || [
-      {
-        id: `item-${Date.now()}`,
-        description: "",
-        quantity: 1,
-        rate: 0,
-        amount: 0,
-      },
-    ],
+    items: prepareDefaultItems(),
     notes: invoice?.notes || "Thank you for your business!",
     subtotal: invoice?.subtotal || 0,
     tax: invoice?.tax || 0,
@@ -169,12 +178,34 @@ export default function InvoiceForm({ invoice, defaultClientId, onSuccess }: Inv
         ...values,
         issueDate: format(values.issueDate, "yyyy-MM-dd"),
         dueDate: format(values.dueDate, "yyyy-MM-dd"),
+        // Ensure all required properties exist on items
+        items: values.items.map(item => ({
+          id: item.id,
+          description: item.description,
+          quantity: item.quantity,
+          rate: item.rate,
+          amount: item.amount
+        }))
       };
 
       if (isEditing && invoice) {
         updateInvoice(invoice.id, formattedValues);
       } else {
-        addInvoice(formattedValues);
+        // Ensure all required fields are set for a new invoice
+        const newInvoice = {
+          clientId: formattedValues.clientId,
+          invoiceNumber: formattedValues.invoiceNumber,
+          issueDate: formattedValues.issueDate,
+          dueDate: formattedValues.dueDate,
+          items: formattedValues.items,
+          notes: formattedValues.notes,
+          subtotal: formattedValues.subtotal,
+          tax: formattedValues.tax,
+          discount: formattedValues.discount,
+          total: formattedValues.total,
+          status: formattedValues.status
+        };
+        addInvoice(newInvoice);
       }
 
       if (onSuccess) {

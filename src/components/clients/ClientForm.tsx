@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -65,7 +64,19 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
       if (isEditing && client) {
         updateClient(client.id, values);
       } else {
-        addClient(values);
+        // Explicitly define all required fields
+        const newClient = {
+          fullName: values.fullName,
+          email: values.email,
+          address: values.address,
+          companyName: values.companyName,
+          phone: values.phone,
+          city: values.city,
+          state: values.state, 
+          zipCode: values.zipCode,
+          country: values.country,
+        };
+        addClient(newClient);
       }
 
       if (onSuccess) {

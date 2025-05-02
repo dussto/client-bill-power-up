@@ -28,7 +28,7 @@ export default function SendInvoicePage() {
   });
   
   const invoice = getInvoice(invoiceId || '');
-  const [client, setClient] = useState(null);
+  const [client, setClient] = useState<any>(null);
   
   useEffect(() => {
     if (!invoice) {
@@ -54,15 +54,27 @@ export default function SendInvoicePage() {
     return null;
   }
 
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target;
+    
+    // Handle text inputs
+    if (type !== 'checkbox') {
+      setEmailData({
+        ...emailData,
+        [name]: value,
+      });
+    }
+  };
+
+  // Separate handler for checkbox changes
+  const handleCheckboxChange = (name: string, checked: boolean) => {
     setEmailData({
       ...emailData,
-      [name]: type === 'checkbox' ? checked : value,
+      [name]: checked,
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     
@@ -153,7 +165,7 @@ export default function SendInvoicePage() {
                       name="copy"
                       checked={emailData.copy}
                       onCheckedChange={(checked) =>
-                        setEmailData({ ...emailData, copy: checked })
+                        handleCheckboxChange("copy", checked === true)
                       }
                     />
                     <Label htmlFor="copy">
@@ -167,7 +179,7 @@ export default function SendInvoicePage() {
                       name="markAsSent"
                       checked={emailData.markAsSent}
                       onCheckedChange={(checked) =>
-                        setEmailData({ ...emailData, markAsSent: checked })
+                        handleCheckboxChange("markAsSent", checked === true)
                       }
                     />
                     <Label htmlFor="markAsSent">
