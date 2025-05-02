@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -63,6 +64,7 @@ interface InvoiceFormProps {
 export default function InvoiceForm({ invoice, defaultClientId, onSuccess }: InvoiceFormProps) {
   const { clients, addInvoice, updateInvoice } = useData();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCalculating, setIsCalculating] = useState(false); // Add flag to prevent recursion
   const navigate = useNavigate();
   const isEditing = !!invoice;
 
@@ -122,40 +124,73 @@ export default function InvoiceForm({ invoice, defaultClientId, onSuccess }: Inv
 
   // Calculate totals whenever items, tax, or discount changes
   const calculateTotals = () => {
-    const items = form.getValues("items");
+    // Prevent recursion
+    if (isCalculating) return;
     
-    // Update individual item amounts and calculate subtotal
-    let subtotal = 0;
-    items.forEach((item, index) => {
-      const quantity = Number(item.quantity);
-      const rate = Number(item.rate);
-      const amount = quantity * rate;
-      form.setValue(`items.${index}.amount`, amount);
-      subtotal += amount;
-    });
+    setIsCalculating(true);
     
-    const tax = Number(form.getValues("tax") || 0);
-    const discount = Number(form.getValues("discount") || 0);
-    
-    // Calculate total
-    const total = subtotal + tax - discount;
-    
-    form.setValue("subtotal", subtotal);
-    form.setValue("total", total);
+    try {
+      const items = form.getValues("items");
+      
+      // Update individual item amounts and calculate subtotal
+      let subtotal = 0;
+      items.forEach((item, index) => {
+        const quantity = Number(item.quantity);
+        const rate = Number(item.rate);
+        const amount = quantity * rate;
+        form.setValue(`items.${index}.amount`, amount, { 
+          shouldValidate: false,
+          shouldDirty: true,
+          shouldTouch: false
+        });
+        subtotal += amount;
+      });
+      
+      const tax = Number(form.getValues("tax") || 0);
+      const discount = Number(form.getValues("discount") || 0);
+      
+      // Calculate total
+      const total = subtotal + tax - discount;
+      
+      form.setValue("subtotal", subtotal, { 
+        shouldValidate: false,
+        shouldDirty: true,
+        shouldTouch: false
+      });
+      form.setValue("total", total, { 
+        shouldValidate: false,
+        shouldDirty: true,
+        shouldTouch: false
+      });
+    } finally {
+      setIsCalculating(false);
+    }
   };
 
-  // Recalculate totals when items, tax, or discount changes
+  // Use a debounced effect for recalculating totals to prevent rapid firing
   useEffect(() => {
+    // Store the subscription
     const subscription = form.watch((value, { name }) => {
       if (
         name?.startsWith("items") ||
         name === "tax" ||
         name === "discount"
       ) {
-        calculateTotals();
+        // Use a small timeout to prevent rapid firing
+        const timeoutId = setTimeout(() => {
+          if (!isCalculating) {
+            calculateTotals();
+          }
+        }, 100);
+        
+        return () => clearTimeout(timeoutId);
       }
     });
     
+    // Initial calculation
+    calculateTotals();
+    
+    // Cleanup subscription
     return () => subscription.unsubscribe();
   }, [form.watch]);
 
