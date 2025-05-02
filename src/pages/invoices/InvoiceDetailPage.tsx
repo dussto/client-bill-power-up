@@ -1,4 +1,3 @@
-
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -15,17 +14,21 @@ import {
   Clock,
   Check,
   AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function InvoiceDetailPage() {
   const { invoiceId } = useParams<{ invoiceId: string }>();
-  const { getInvoice, getClient, updateInvoice } = useData();
+  const { getInvoice, getClient, updateInvoice, getUser } = useData();
   const navigate = useNavigate();
   const { toast } = useToast();
   
+  const [isLoading, setIsLoading] = useState(false);
   const invoice = getInvoice(invoiceId || '');
   const [client, setClient] = useState(null);
+  const currentUser = getUser();
   
   useEffect(() => {
     if (!invoice) {
@@ -77,11 +80,7 @@ export default function InvoiceDetailPage() {
   };
 
   const handleSendInvoice = () => {
-    // In a real app, this would send the invoice via email
-    toast({
-      title: "Invoice sent",
-      description: `Invoice #${invoice.invoiceNumber} has been sent to ${client.email}`,
-    });
+    navigate(`/invoices/${invoice.id}/send`);
   };
 
   const handleMarkAsPaid = () => {
@@ -100,12 +99,47 @@ export default function InvoiceDetailPage() {
     });
   };
 
-  const handleSendReminder = () => {
-    // In a real app, this would send a reminder email
-    toast({
-      title: "Payment reminder sent",
-      description: `A payment reminder for invoice #${invoice.invoiceNumber} has been sent to ${client.email}`,
-    });
+  const handleSendReminder = async () => {
+    setIsLoading(true);
+    
+    try {
+      const formattedDate = format(new Date(invoice.dueDate), "MMMM d, yyyy");
+      const subject = `Reminder: Invoice #${invoice.invoiceNumber} Payment Due`;
+      const message = `Dear ${client.fullName},\n\nThis is a friendly reminder that payment for invoice #${invoice.invoiceNumber} in the amount of $${invoice.total.toFixed(2)} is due on ${formattedDate}.\n\nIf you have already made the payment, please disregard this message.\n\nThank you for your business.\n\nSincerely,\n${currentUser?.fullName || 'Your Name'}\n${currentUser?.company || 'Your Company'}`;
+      
+      // Send the reminder via Supabase Edge Function
+      const { data, error } = await supabase.functions.invoke('send-invoice', {
+        body: {
+          to: client.email,
+          subject: subject,
+          message: message,
+          copy: true,
+          replyTo: currentUser?.email,
+          invoiceNumber: invoice.invoiceNumber,
+          clientName: client.fullName,
+          amount: invoice.total,
+          dueDate: formattedDate
+        }
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+      
+      toast({
+        title: "Payment reminder sent",
+        description: `A payment reminder for invoice #${invoice.invoiceNumber} has been sent to ${client.email}`,
+      });
+    } catch (error) {
+      console.error("Error sending reminder:", error);
+      toast({
+        title: "Error sending reminder",
+        description: "An error occurred while sending the payment reminder. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -300,9 +334,18 @@ export default function InvoiceDetailPage() {
                   </Button>
                   
                   {(invoice.status === 'pending' || invoice.status === 'overdue') && (
-                    <Button onClick={handleSendReminder} className="w-full" variant="outline">
-                      <AlertTriangle className="h-4 w-4 mr-2" />
-                      Send Reminder
+                    <Button 
+                      onClick={handleSendReminder} 
+                      className="w-full" 
+                      variant="outline"
+                      disabled={isLoading}
+                    >
+                      {isLoading ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <AlertTriangle className="h-4 w-4 mr-2" />
+                      )}
+                      {isLoading ? "Sending..." : "Send Reminder"}
                     </Button>
                   )}
                   

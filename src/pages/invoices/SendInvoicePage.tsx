@@ -4,17 +4,19 @@ import { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { useData } from '@/context/DataContext';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Send } from 'lucide-react';
+import { ArrowLeft, Send, Loader2 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
+import { supabase } from '@/integrations/supabase/client';
+import { format } from 'date-fns';
 
 export default function SendInvoicePage() {
   const { invoiceId } = useParams<{ invoiceId: string }>();
-  const { getInvoice, getClient, updateInvoice } = useData();
+  const { getInvoice, getClient, updateInvoice, getUser } = useData();
   const navigate = useNavigate();
   const { toast } = useToast();
   
@@ -29,6 +31,7 @@ export default function SendInvoicePage() {
   
   const invoice = getInvoice(invoiceId || '');
   const [client, setClient] = useState<any>(null);
+  const currentUser = getUser();
   
   useEffect(() => {
     if (!invoice) {
@@ -40,10 +43,12 @@ export default function SendInvoicePage() {
     setClient(clientData);
     
     if (clientData) {
+      const formattedDate = formatDate(invoice.dueDate);
+      
       setEmailData({
         to: clientData.email,
         subject: `Invoice #${invoice.invoiceNumber} from Your Company`,
-        message: `Dear ${clientData.fullName},\n\nPlease find attached invoice #${invoice.invoiceNumber} for $${invoice.total.toFixed(2)}.\n\nPayment is due by ${new Date(invoice.dueDate).toLocaleDateString()}.\n\nThank you for your business.\n\nSincerely,\nYour Name\nYour Company`,
+        message: `Dear ${clientData.fullName},\n\nPlease find attached invoice #${invoice.invoiceNumber} for $${invoice.total.toFixed(2)}.\n\nPayment is due by ${formattedDate}.\n\nThank you for your business.\n\nSincerely,\n${currentUser?.fullName || 'Your Name'}\n${currentUser?.company || 'Your Company'}`,
         copy: true,
         markAsSent: true,
       });
@@ -53,6 +58,14 @@ export default function SendInvoicePage() {
   if (!invoice || !client) {
     return null;
   }
+
+  const formatDate = (dateString: string) => {
+    try {
+      return format(new Date(dateString), "MMMM d, yyyy");
+    } catch (error) {
+      return dateString;
+    }
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -74,12 +87,29 @@ export default function SendInvoicePage() {
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     
     try {
-      // In a real app, this would send the invoice via email
+      // Send the invoice via Supabase Edge Function
+      const { data, error } = await supabase.functions.invoke('send-invoice', {
+        body: {
+          to: emailData.to,
+          subject: emailData.subject,
+          message: emailData.message,
+          copy: emailData.copy,
+          replyTo: currentUser?.email,
+          invoiceNumber: invoice.invoiceNumber,
+          clientName: client.fullName,
+          amount: invoice.total,
+          dueDate: formatDate(invoice.dueDate)
+        }
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
       
       // If markAsSent is true, update the invoice status
       if (emailData.markAsSent && invoice.status === 'draft') {
@@ -93,6 +123,7 @@ export default function SendInvoicePage() {
       
       navigate(`/invoices/${invoice.id}`);
     } catch (error) {
+      console.error("Error sending invoice:", error);
       toast({
         title: "Error sending invoice",
         description: "An error occurred while sending the invoice. Please try again.",
@@ -162,7 +193,6 @@ export default function SendInvoicePage() {
                   <div className="flex items-center space-x-2">
                     <Checkbox
                       id="copy"
-                      name="copy"
                       checked={emailData.copy}
                       onCheckedChange={(checked) =>
                         handleCheckboxChange("copy", checked === true)
@@ -176,7 +206,6 @@ export default function SendInvoicePage() {
                   <div className="flex items-center space-x-2">
                     <Checkbox
                       id="markAsSent"
-                      name="markAsSent"
                       checked={emailData.markAsSent}
                       onCheckedChange={(checked) =>
                         handleCheckboxChange("markAsSent", checked === true)
@@ -198,8 +227,17 @@ export default function SendInvoicePage() {
                   Cancel
                 </Button>
                 <Button type="submit" disabled={isSubmitting}>
-                  <Send className="h-4 w-4 mr-2" />
-                  {isSubmitting ? "Sending..." : "Send Invoice"}
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4 mr-2" />
+                      Send Invoice
+                    </>
+                  )}
                 </Button>
               </div>
             </form>
