@@ -8,6 +8,8 @@ import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/ui/use-toast';
 import { useState } from 'react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import EmailDomainManager from '@/components/settings/EmailDomainManager';
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
@@ -86,148 +88,162 @@ export default function SettingsPage() {
         
         <Separator />
         
-        <div className="grid gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Profile</CardTitle>
-              <CardDescription>
-                Update your personal information
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleProfileSubmit} className="space-y-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="fullName">Full Name</Label>
-                  <Input
-                    id="fullName"
-                    name="fullName"
-                    value={profileForm.fullName}
-                    onChange={handleProfileChange}
-                  />
-                </div>
-                
-                <div className="grid gap-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    name="email"
-                    type="email"
-                    value={profileForm.email}
-                    onChange={handleProfileChange}
-                  />
-                </div>
-                
-                <div className="grid gap-2">
-                  <Label htmlFor="company">Company</Label>
-                  <Input
-                    id="company"
-                    name="company"
-                    value={profileForm.company}
-                    onChange={handleProfileChange}
-                  />
-                </div>
-                
-                <Button type="submit">Save Changes</Button>
-              </form>
-            </CardContent>
-          </Card>
+        <Tabs defaultValue="profile" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="profile">Profile</TabsTrigger>
+            <TabsTrigger value="email">Email Domains</TabsTrigger>
+            <TabsTrigger value="account">Account</TabsTrigger>
+          </TabsList>
           
-          <Card>
-            <CardHeader>
-              <CardTitle>Password</CardTitle>
-              <CardDescription>
-                Update your password
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handlePasswordSubmit} className="space-y-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="currentPassword">Current Password</Label>
-                  <Input
-                    id="currentPassword"
-                    name="currentPassword"
-                    type="password"
-                    value={passwordForm.currentPassword}
-                    onChange={handlePasswordChange}
-                  />
-                </div>
-                
-                <div className="grid gap-2">
-                  <Label htmlFor="newPassword">New Password</Label>
-                  <Input
-                    id="newPassword"
-                    name="newPassword"
-                    type="password"
-                    value={passwordForm.newPassword}
-                    onChange={handlePasswordChange}
-                  />
-                </div>
-                
-                <div className="grid gap-2">
-                  <Label htmlFor="confirmPassword">Confirm Password</Label>
-                  <Input
-                    id="confirmPassword"
-                    name="confirmPassword"
-                    type="password"
-                    value={passwordForm.confirmPassword}
-                    onChange={handlePasswordChange}
-                  />
-                </div>
-                
-                <Button type="submit">Update Password</Button>
-              </form>
-            </CardContent>
-          </Card>
+          <TabsContent value="profile" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Profile</CardTitle>
+                <CardDescription>
+                  Update your personal information
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleProfileSubmit} className="space-y-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="fullName">Full Name</Label>
+                    <Input
+                      id="fullName"
+                      name="fullName"
+                      value={profileForm.fullName}
+                      onChange={handleProfileChange}
+                    />
+                  </div>
+                  
+                  <div className="grid gap-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      name="email"
+                      type="email"
+                      value={profileForm.email}
+                      onChange={handleProfileChange}
+                    />
+                  </div>
+                  
+                  <div className="grid gap-2">
+                    <Label htmlFor="company">Company</Label>
+                    <Input
+                      id="company"
+                      name="company"
+                      value={profileForm.company}
+                      onChange={handleProfileChange}
+                    />
+                  </div>
+                  
+                  <Button type="submit">Save Changes</Button>
+                </form>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader>
+                <CardTitle>Password</CardTitle>
+                <CardDescription>
+                  Update your password
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handlePasswordSubmit} className="space-y-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="currentPassword">Current Password</Label>
+                    <Input
+                      id="currentPassword"
+                      name="currentPassword"
+                      type="password"
+                      value={passwordForm.currentPassword}
+                      onChange={handlePasswordChange}
+                    />
+                  </div>
+                  
+                  <div className="grid gap-2">
+                    <Label htmlFor="newPassword">New Password</Label>
+                    <Input
+                      id="newPassword"
+                      name="newPassword"
+                      type="password"
+                      value={passwordForm.newPassword}
+                      onChange={handlePasswordChange}
+                    />
+                  </div>
+                  
+                  <div className="grid gap-2">
+                    <Label htmlFor="confirmPassword">Confirm Password</Label>
+                    <Input
+                      id="confirmPassword"
+                      name="confirmPassword"
+                      type="password"
+                      value={passwordForm.confirmPassword}
+                      onChange={handlePasswordChange}
+                    />
+                  </div>
+                  
+                  <Button type="submit">Update Password</Button>
+                </form>
+              </CardContent>
+            </Card>
+          </TabsContent>
           
-          <Card>
-            <CardHeader>
-              <CardTitle>Account</CardTitle>
-              <CardDescription>
-                Manage your account
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <h3 className="text-lg font-medium">Danger Zone</h3>
-                <p className="text-sm text-muted-foreground">
-                  Performing these actions will affect your account
-                </p>
-              </div>
-              
-              <div className="flex items-center justify-between border rounded-lg p-4 bg-muted/50">
-                <div>
-                  <h4 className="font-medium">Log Out</h4>
+          <TabsContent value="email">
+            <EmailDomainManager />
+          </TabsContent>
+          
+          <TabsContent value="account" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Account</CardTitle>
+                <CardDescription>
+                  Manage your account
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <h3 className="text-lg font-medium">Danger Zone</h3>
                   <p className="text-sm text-muted-foreground">
-                    Sign out of your account
+                    Performing these actions will affect your account
                   </p>
                 </div>
-                <Button variant="outline" onClick={logout}>
-                  Log Out
-                </Button>
-              </div>
-              
-              <div className="flex items-center justify-between border rounded-lg p-4 bg-muted/50">
-                <div>
-                  <h4 className="font-medium">Delete Account</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Permanently delete your account and all your data
-                  </p>
+                
+                <div className="flex items-center justify-between border rounded-lg p-4 bg-muted/50">
+                  <div>
+                    <h4 className="font-medium">Log Out</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Sign out of your account
+                    </p>
+                  </div>
+                  <Button variant="outline" onClick={logout}>
+                    Log Out
+                  </Button>
                 </div>
-                <Button 
-                  variant="destructive" 
-                  onClick={() => {
-                    toast({
-                      title: "Account deletion not implemented",
-                      description: "This is a demo app, so account deletion is not implemented.",
-                    });
-                  }}
-                >
-                  Delete Account
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+                
+                <div className="flex items-center justify-between border rounded-lg p-4 bg-muted/50">
+                  <div>
+                    <h4 className="font-medium">Delete Account</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Permanently delete your account and all your data
+                    </p>
+                  </div>
+                  <Button 
+                    variant="destructive" 
+                    onClick={() => {
+                      toast({
+                        title: "Account deletion not implemented",
+                        description: "This is a demo app, so account deletion is not implemented.",
+                      });
+                    }}
+                  >
+                    Delete Account
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </DashboardLayout>
   );
