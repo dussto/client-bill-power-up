@@ -14,6 +14,15 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 
+// Define formatDate function at the top level, before it's used in the component
+const formatDate = (dateString: string) => {
+  try {
+    return format(new Date(dateString), "MMMM d, yyyy");
+  } catch (error) {
+    return dateString;
+  }
+};
+
 export default function SendInvoicePage() {
   const { invoiceId } = useParams<{ invoiceId: string }>();
   const { getInvoice, getClient, updateInvoice, getUser } = useData();
@@ -58,14 +67,6 @@ export default function SendInvoicePage() {
   if (!invoice || !client) {
     return null;
   }
-
-  const formatDate = (dateString: string) => {
-    try {
-      return format(new Date(dateString), "MMMM d, yyyy");
-    } catch (error) {
-      return dateString;
-    }
-  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
