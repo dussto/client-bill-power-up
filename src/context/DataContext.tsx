@@ -1,6 +1,5 @@
-
 import { createContext, useState, useContext, useEffect, ReactNode } from 'react';
-import { Client, Invoice } from '@/types';
+import { Client, Invoice, User } from '@/types';
 import { useAuth } from './AuthContext';
 
 interface DataContextProps {
@@ -15,6 +14,7 @@ interface DataContextProps {
   deleteInvoice: (id: string) => boolean;
   getInvoice: (id: string) => Invoice | undefined;
   getClientInvoices: (clientId: string) => Invoice[];
+  getUser: () => User | null; // Added the getUser function to the interface
 }
 
 const DataContext = createContext<DataContextProps | undefined>(undefined);
@@ -232,6 +232,11 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     return invoices.filter(invoice => invoice.clientId === clientId);
   };
 
+  // Get the current user
+  const getUser = () => {
+    return user;
+  };
+
   return (
     <DataContext.Provider 
       value={{ 
@@ -246,6 +251,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         deleteInvoice,
         getInvoice,
         getClientInvoices,
+        getUser, // Add the getUser function to the context value
       }}
     >
       {children}
