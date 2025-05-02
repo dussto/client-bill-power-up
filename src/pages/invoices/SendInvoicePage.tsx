@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { useData } from '@/context/DataContext';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Send, Loader2 } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, AlertTriangle, Info } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 // Define formatDate function at the top level, before it's used in the component
 const formatDate = (dateString: string) => {
@@ -30,6 +31,7 @@ export default function SendInvoicePage() {
   const { toast } = useToast();
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [testModeInfo, setTestModeInfo] = useState<string | null>(null);
   const [emailData, setEmailData] = useState({
     to: '',
     subject: '',
@@ -91,6 +93,7 @@ export default function SendInvoicePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setTestModeInfo(null);
     
     try {
       // Send the invoice via Supabase Edge Function
@@ -112,6 +115,11 @@ export default function SendInvoicePage() {
         throw new Error(error.message);
       }
       
+      // Check if we're in testing mode
+      if (data?.recipient && data?.recipient !== emailData.to) {
+        setTestModeInfo(`Your Resend account is in testing mode. The invoice was sent to ${data.recipient} instead of ${emailData.to}. To send emails to actual clients, verify your domain in Resend.`);
+      }
+      
       // If markAsSent is true, update the invoice status
       if (emailData.markAsSent && invoice.status === 'draft') {
         updateInvoice(invoice.id, { status: 'pending' });
@@ -119,10 +127,13 @@ export default function SendInvoicePage() {
       
       toast({
         title: "Invoice sent",
-        description: `Invoice #${invoice.invoiceNumber} has been sent to ${emailData.to}`,
+        description: data?.message || `Invoice #${invoice.invoiceNumber} has been sent`,
       });
       
-      navigate(`/invoices/${invoice.id}`);
+      if (!testModeInfo) {
+        // Only navigate away if not in test mode
+        navigate(`/invoices/${invoice.id}`);
+      }
     } catch (error) {
       console.error("Error sending invoice:", error);
       toast({
@@ -151,6 +162,16 @@ export default function SendInvoicePage() {
             </p>
           </div>
         </div>
+        
+        {testModeInfo && (
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertTitle>Testing Mode Active</AlertTitle>
+            <AlertDescription>
+              {testModeInfo}
+            </AlertDescription>
+          </Alert>
+        )}
         
         <Card>
           <CardContent className="p-6">

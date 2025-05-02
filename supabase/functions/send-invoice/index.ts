@@ -54,35 +54,51 @@ const handler = async (req: Request): Promise<Response> => {
       </div>
     `;
 
+    // Get the verified email from environment or fallback
+    const verifiedEmail = Deno.env.get("RESEND_VERIFIED_EMAIL") || "onboarding@resend.dev";
+    
     // Set up email sending options
     const emailOptions = {
-      from: "Invoice Creator <onboarding@resend.dev>",
-      to: [to],
-      subject: subject,
+      from: `Invoice Creator <${verifiedEmail}>`,
+      to: [verifiedEmail], // Always send to verified email in testing mode
+      reply_to: replyTo,
+      subject: `${subject} (Originally to: ${to})`,
       html: htmlContent,
     };
 
-    // If copy is requested, add the sender as BCC
-    if (copy && replyTo) {
-      emailOptions["bcc"] = [replyTo];
-    }
-
-    // Add reply-to if provided
-    if (replyTo) {
-      emailOptions["reply_to"] = replyTo;
-    }
+    // Add original recipient in the email body for testing purposes
+    emailOptions.html = `
+      <div style="background-color: #ffffe0; padding: 10px; margin-bottom: 15px; border: 1px solid #e6db55; border-radius: 4px;">
+        <strong>TESTING MODE:</strong> This email would have been sent to ${to}
+      </div>
+      ${htmlContent}
+    `;
 
     const emailResponse = await resend.emails.send(emailOptions);
+    
+    if (emailResponse.error) {
+      throw new Error(emailResponse.error);
+    }
+    
     console.log("Email sent successfully:", emailResponse);
 
-    return new Response(JSON.stringify(emailResponse), {
+    return new Response(JSON.stringify({
+      success: true,
+      message: "Email sent to your test email address. To send to actual clients, verify a domain in Resend.",
+      recipient: verifiedEmail,
+      originalRecipient: to
+    }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   } catch (error) {
     console.error("Error in send-invoice function:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        success: false,
+        error: error.message,
+        hint: "If you're in testing mode, you need to verify a domain in Resend or set RESEND_VERIFIED_EMAIL to your verified email."
+      }),
       {
         status: 500,
         headers: { "Content-Type": "application/json", ...corsHeaders },
