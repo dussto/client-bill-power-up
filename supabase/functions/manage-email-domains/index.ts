@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { Resend } from "npm:resend@1.0.0";
 
@@ -141,28 +140,47 @@ const handler = async (req: Request): Promise<Response> => {
         }
         
         try {
-          // Use the correct method to remove the domain
-          const response = await resend.domains.remove(domain);
+          // List all domains to find the domain ID
+          const listResponse = await resend.domains.list();
+          console.log("List domains response before removal:", JSON.stringify(listResponse));
+          
+          // Find the domain we want to remove
+          const domainToRemove = listResponse?.data?.find(d => d.name === domain);
+          
+          if (!domainToRemove) {
+            console.log(`Domain ${domain} not found in Resend account`);
+            return new Response(JSON.stringify({
+              success: true,
+              message: `Domain ${domain} was already removed or did not exist`,
+            }), {
+              status: 200,
+              headers: { "Content-Type": "application/json", ...corsHeaders },
+            });
+          }
+          
+          // Remove domain using the domain ID
+          console.log(`Found domain to remove: ${domainToRemove.id} (${domainToRemove.name})`);
+          const response = await resend.domains.remove(domainToRemove.id);
           console.log("Domain removal response:", JSON.stringify(response));
           
-          // Check if there's an error in the response
-          if (response?.error) {
-            // If the error is about domain not found, we'll still return success
-            // as the end result is what the user wanted (domain not in Resend)
-            if (response.error.message?.includes("not found") || response.error.status === 404) {
-              console.log("Domain not found in Resend, already removed or never existed");
+          // Verify the domain is actually removed
+          try {
+            const verifyRemoved = await resend.domains.list();
+            console.log("List domains response after removal:", JSON.stringify(verifyRemoved));
+            const stillExists = verifyRemoved?.data?.some(d => d.name === domain);
+            
+            if (stillExists) {
+              console.error("Domain still exists after removal attempt");
               return new Response(JSON.stringify({
-                success: true,
-                message: `Domain ${domain} was removed or did not exist`,
+                success: false,
+                message: `Failed to remove domain ${domain} from Resend`,
               }), {
-                status: 200,
+                status: 500,
                 headers: { "Content-Type": "application/json", ...corsHeaders },
               });
             }
-            
-            // For other errors, return an error response
-            console.error("Error removing domain:", response.error);
-            throw new Error(response.error.message || 'Error removing domain');
+          } catch (verifyError) {
+            console.error("Error verifying domain removal:", verifyError);
           }
           
           return new Response(JSON.stringify({
@@ -175,13 +193,12 @@ const handler = async (req: Request): Promise<Response> => {
         } catch (error) {
           console.error("Error removing domain:", error);
           
-          // Check if the error message indicates the domain was not found
+          // Check if the error is because the domain doesn't exist
           const errorMessage = error instanceof Error ? error.message : String(error);
           if (errorMessage.includes("not found") || errorMessage.includes("404")) {
-            // If the domain wasn't found, we can consider this a "success" from the user's perspective
             return new Response(JSON.stringify({
               success: true,
-              message: `Domain ${domain} was removed or did not exist`,
+              message: `Domain ${domain} was already removed or did not exist`,
             }), {
               status: 200,
               headers: { "Content-Type": "application/json", ...corsHeaders },
