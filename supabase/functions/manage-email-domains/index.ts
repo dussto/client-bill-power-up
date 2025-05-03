@@ -109,8 +109,10 @@ const handler = async (req: Request): Promise<Response> => {
           throw new Error('Domain is required');
         }
         
-        // Remove domain
-        const response = await resend.domains.delete(domain);
+        // Remove domain - using the correct method name 'remove' instead of 'delete'
+        const response = await resend.domains.remove(domain);
+        
+        console.log("Domain removal response:", JSON.stringify(response));
         
         if (response.error) {
           throw new Error(response.error.message);

@@ -78,6 +78,9 @@ export async function removeDomain(domain: string): Promise<{ success: boolean; 
 
     if (error) throw new Error(error.message);
     
+    // Add more detailed logging
+    console.log('Remove domain response:', data);
+    
     // Check if the response is valid
     if (!data) throw new Error('Invalid response from server');
     
