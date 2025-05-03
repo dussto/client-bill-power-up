@@ -1,3 +1,4 @@
+
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -9,7 +10,6 @@ import { format } from 'date-fns';
 import {
   ArrowLeft,
   Edit,
-  Printer,
   Send,
   Clock,
   Check,
@@ -169,10 +169,6 @@ export default function InvoiceDetailPage() {
                 <Edit className="h-4 w-4 mr-2" />
                 Edit
               </Link>
-            </Button>
-            <Button variant="outline">
-              <Printer className="h-4 w-4 mr-2" />
-              Print
             </Button>
             <Button onClick={handleSendInvoice}>
               <Send className="h-4 w-4 mr-2" />

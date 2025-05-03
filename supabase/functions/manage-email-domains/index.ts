@@ -49,14 +49,17 @@ const handler = async (req: Request): Promise<Response> => {
         const dnsResponse = await resend.domains.verify(domain);
         let dnsRecords = [];
         
-        if (dnsResponse.data) {
+        if (dnsResponse.data && dnsResponse.data.records) {
           dnsRecords = dnsResponse.data.records;
+        } else {
+          console.log("DNS verification response:", JSON.stringify(dnsResponse));
         }
         
         return new Response(JSON.stringify({
           success: true,
           message: `Domain ${domain} added successfully. Please add the DNS records to verify your domain.`,
           dnsRecords: dnsRecords,
+          status: 'pending',
         }), {
           status: 200,
           headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -77,14 +80,24 @@ const handler = async (req: Request): Promise<Response> => {
         
         // Get DNS records if the domain exists
         const verifyResponse = await resend.domains.verify(domain);
+        let dnsRecords = [];
+        let status = 'pending';
         
-        const status = domainResponse.data?.status || 'pending';
+        if (domainResponse.data) {
+          status = domainResponse.data.status || 'pending';
+        }
+        
+        if (verifyResponse.data && verifyResponse.data.records) {
+          dnsRecords = verifyResponse.data.records;
+        } else {
+          console.log("Verification response:", JSON.stringify(verifyResponse));
+        }
         
         return new Response(JSON.stringify({
           success: true,
           message: `Domain status: ${status}`,
           status: status,
-          dnsRecords: verifyResponse.data?.records || [],
+          dnsRecords: dnsRecords,
         }), {
           status: 200,
           headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -97,7 +110,7 @@ const handler = async (req: Request): Promise<Response> => {
         }
         
         // Remove domain
-        const response = await resend.domains.remove(domain);
+        const response = await resend.domains.delete(domain);
         
         if (response.error) {
           throw new Error(response.error.message);
@@ -121,7 +134,7 @@ const handler = async (req: Request): Promise<Response> => {
         }
         
         // Extract domain names from response
-        const domains = response.data?.map(domain => domain.name) || [];
+        const domains = response.data ? response.data.map(domain => domain.name) : [];
         
         return new Response(JSON.stringify({
           success: true,

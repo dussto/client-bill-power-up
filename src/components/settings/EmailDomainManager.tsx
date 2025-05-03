@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Loader2, Check, AlertTriangle, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Check, AlertTriangle, Plus, Trash2, RefreshCw } from 'lucide-react';
 import { 
   addEmailDomain, 
   checkDomainStatus, 
@@ -27,11 +27,12 @@ import {
 export default function EmailDomainManager() {
   const [domain, setDomain] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isChecking, setIsChecking] = useState(false);
+  const [isChecking, setIsChecking] = useState<{[key: string]: boolean}>({});
+  const [isRemoving, setIsRemoving] = useState<{[key: string]: boolean}>({});
   const [domains, setDomains] = useState<string[]>([]);
   const [currentDomain, setCurrentDomain] = useState<string | null>(null);
   const [dnsRecords, setDnsRecords] = useState<DnsRecord[]>([]);
-  const [verificationStatus, setVerificationStatus] = useState<'verified' | 'pending' | 'failed' | null>(null);
+  const [verificationStatus, setVerificationStatus] = useState<{[key: string]: 'verified' | 'pending' | 'failed' | null}>({});
   const { toast } = useToast();
 
   useEffect(() => {
@@ -39,8 +40,26 @@ export default function EmailDomainManager() {
   }, []);
 
   const fetchUserDomains = async () => {
-    const userDomains = await getUserDomains();
-    setDomains(userDomains);
+    try {
+      setIsLoading(true);
+      const userDomains = await getUserDomains();
+      setDomains(userDomains);
+      
+      // Check status for each domain
+      for (const domainName of userDomains) {
+        const response = await checkDomainStatus(domainName);
+        if (response.success && response.status) {
+          setVerificationStatus(prev => ({
+            ...prev,
+            [domainName]: response.status
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching domains:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleAddDomain = async (e: React.FormEvent) => {
@@ -56,81 +75,147 @@ export default function EmailDomainManager() {
     }
 
     setIsLoading(true);
-    const response = await addEmailDomain(domain);
-    setIsLoading(false);
-
-    if (response.success) {
-      toast({
-        title: "Domain added",
-        description: response.message,
-      });
-      setDomain('');
-      fetchUserDomains();
+    try {
+      const response = await addEmailDomain(domain);
       
-      if (response.dnsRecords) {
-        setDnsRecords(response.dnsRecords);
-        setCurrentDomain(domain);
-        setVerificationStatus('pending');
+      if (response.success) {
+        toast({
+          title: "Domain added",
+          description: response.message,
+        });
+        
+        setDomain('');
+        await fetchUserDomains();
+        
+        if (response.dnsRecords && response.dnsRecords.length > 0) {
+          setDnsRecords(response.dnsRecords);
+          setCurrentDomain(domain);
+          
+          if (response.status) {
+            setVerificationStatus(prev => ({
+              ...prev,
+              [domain]: response.status
+            }));
+          }
+        } else {
+          console.warn('No DNS records received when adding domain:', domain);
+          // Try to get DNS records explicitly
+          await handleCheckStatus(domain);
+        }
+      } else {
+        toast({
+          title: "Error adding domain",
+          description: response.message,
+          variant: "destructive",
+        });
       }
-    } else {
+    } catch (error) {
+      console.error('Error in handleAddDomain:', error);
       toast({
         title: "Error adding domain",
-        description: response.message,
+        description: error instanceof Error ? error.message : "Unknown error occurred",
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleCheckStatus = async (domainToCheck: string) => {
-    setIsChecking(true);
+    setIsChecking(prev => ({ ...prev, [domainToCheck]: true }));
     setCurrentDomain(domainToCheck);
     
-    const response = await checkDomainStatus(domainToCheck);
-    setIsChecking(false);
-    
-    if (response.success) {
-      setVerificationStatus(response.status || null);
-      if (response.dnsRecords) {
-        setDnsRecords(response.dnsRecords);
-      }
+    try {
+      const response = await checkDomainStatus(domainToCheck);
       
-      toast({
-        title: `Domain status: ${response.status}`,
-        description: response.message,
-      });
-    } else {
+      if (response.success) {
+        if (response.status) {
+          setVerificationStatus(prev => ({
+            ...prev,
+            [domainToCheck]: response.status
+          }));
+        }
+        
+        if (response.dnsRecords && response.dnsRecords.length > 0) {
+          setDnsRecords(response.dnsRecords);
+        } else {
+          console.warn('No DNS records received when checking domain:', domainToCheck);
+        }
+        
+        toast({
+          title: `Domain status: ${response.status || 'unknown'}`,
+          description: response.message,
+        });
+      } else {
+        toast({
+          title: "Error checking status",
+          description: response.message,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error in handleCheckStatus:', error);
       toast({
         title: "Error checking status",
-        description: response.message,
+        description: error instanceof Error ? error.message : "Unknown error occurred",
         variant: "destructive",
       });
+    } finally {
+      setIsChecking(prev => ({ ...prev, [domainToCheck]: false }));
     }
   };
 
   const handleRemoveDomain = async (domainToRemove: string) => {
     if (confirm(`Are you sure you want to remove "${domainToRemove}"?`)) {
-      const response = await removeDomain(domainToRemove);
+      setIsRemoving(prev => ({ ...prev, [domainToRemove]: true }));
       
-      if (response.success) {
-        toast({
-          title: "Domain removed",
-          description: response.message,
-        });
-        fetchUserDomains();
+      try {
+        const response = await removeDomain(domainToRemove);
         
-        if (currentDomain === domainToRemove) {
-          setCurrentDomain(null);
-          setDnsRecords([]);
-          setVerificationStatus(null);
+        if (response.success) {
+          toast({
+            title: "Domain removed",
+            description: response.message,
+          });
+          
+          // Remove from local state
+          setDomains(domains.filter(d => d !== domainToRemove));
+          
+          if (currentDomain === domainToRemove) {
+            setCurrentDomain(null);
+            setDnsRecords([]);
+          }
+          
+          // Remove from verification status
+          const newVerificationStatus = { ...verificationStatus };
+          delete newVerificationStatus[domainToRemove];
+          setVerificationStatus(newVerificationStatus);
+        } else {
+          toast({
+            title: "Error removing domain",
+            description: response.message,
+            variant: "destructive",
+          });
         }
-      } else {
+      } catch (error) {
+        console.error('Error in handleRemoveDomain:', error);
         toast({
           title: "Error removing domain",
-          description: response.message,
+          description: error instanceof Error ? error.message : "Unknown error occurred",
           variant: "destructive",
         });
+      } finally {
+        setIsRemoving(prev => ({ ...prev, [domainToRemove]: false }));
       }
     }
+  };
+
+  const refreshDomains = async () => {
+    await fetchUserDomains();
+    toast({
+      title: "Domains refreshed",
+      description: "Domain list has been updated.",
+    });
   };
 
   return (
@@ -167,23 +252,47 @@ export default function EmailDomainManager() {
           </form>
 
           {/* Domains list */}
-          {domains.length > 0 ? (
-            <div className="space-y-4">
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
               <h3 className="text-sm font-medium">Your Domains</h3>
+              <Button variant="outline" size="sm" onClick={refreshDomains}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+            </div>
+            
+            {isLoading && domains.length === 0 ? (
+              <div className="flex justify-center p-4">
+                <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+            ) : domains.length > 0 ? (
               <div className="space-y-2">
                 {domains.map((domainName) => (
                   <div key={domainName} className="flex items-center justify-between p-3 border rounded-md">
-                    <div className="flex items-center">
+                    <div className="flex items-center space-x-2">
                       <span>{domainName}</span>
+                      {verificationStatus[domainName] && (
+                        <Badge variant={
+                          verificationStatus[domainName] === 'verified' ? 'default' : 
+                          verificationStatus[domainName] === 'pending' ? 'outline' : 
+                          'destructive'
+                        }>
+                          {verificationStatus[domainName] === 'verified' && 
+                            <Check className="h-3 w-3 mr-1" />
+                          }
+                          {verificationStatus[domainName]?.charAt(0).toUpperCase() + 
+                            verificationStatus[domainName]?.slice(1)}
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex space-x-2">
                       <Button 
                         variant="outline" 
                         size="sm" 
                         onClick={() => handleCheckStatus(domainName)}
-                        disabled={isChecking && currentDomain === domainName}
+                        disabled={isChecking[domainName]}
                       >
-                        {isChecking && currentDomain === domainName ? (
+                        {isChecking[domainName] ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
                           "Check Status"
@@ -194,23 +303,28 @@ export default function EmailDomainManager() {
                         size="sm" 
                         className="text-destructive hover:bg-destructive hover:text-destructive-foreground"
                         onClick={() => handleRemoveDomain(domainName)}
+                        disabled={isRemoving[domainName]}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        {isRemoving[domainName] ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
                       </Button>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-          ) : (
-            <Alert>
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>No domains configured</AlertTitle>
-              <AlertDescription>
-                Add a domain to start sending emails from your own email address.
-              </AlertDescription>
-            </Alert>
-          )}
+            ) : (
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>No domains configured</AlertTitle>
+                <AlertDescription>
+                  Add a domain to start sending emails from your own email address.
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -220,14 +334,14 @@ export default function EmailDomainManager() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>DNS Verification for {currentDomain}</CardTitle>
-              {verificationStatus && (
+              {verificationStatus[currentDomain] && (
                 <Badge variant={
-                  verificationStatus === 'verified' ? 'default' : 
-                  verificationStatus === 'pending' ? 'outline' : 
+                  verificationStatus[currentDomain] === 'verified' ? 'default' : 
+                  verificationStatus[currentDomain] === 'pending' ? 'outline' : 
                   'destructive'
                 }>
-                  {verificationStatus === 'verified' && <Check className="h-3 w-3 mr-1" />}
-                  {verificationStatus.charAt(0).toUpperCase() + verificationStatus.slice(1)}
+                  {verificationStatus[currentDomain] === 'verified' && <Check className="h-3 w-3 mr-1" />}
+                  {verificationStatus[currentDomain]?.charAt(0).toUpperCase() + verificationStatus[currentDomain]?.slice(1)}
                 </Badge>
               )}
             </div>

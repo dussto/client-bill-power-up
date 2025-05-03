@@ -25,13 +25,20 @@ export async function addEmailDomain(domain: string): Promise<DomainVerification
     });
 
     if (error) throw new Error(error.message);
+    
+    // Add debug logging
+    console.log('Add domain response:', data);
+    
+    // Check if the response is valid
+    if (!data) throw new Error('Invalid response from server');
+    
     return data;
   } catch (error) {
     console.error('Error adding email domain:', error);
     return {
       success: false,
-      message: `Failed to add domain: ${error.message}`,
-      error: error.message
+      message: `Failed to add domain: ${error instanceof Error ? error.message : String(error)}`,
+      error: error instanceof Error ? error.message : String(error)
     };
   }
 }
@@ -44,13 +51,20 @@ export async function checkDomainStatus(domain: string): Promise<DomainVerificat
     });
 
     if (error) throw new Error(error.message);
+    
+    // Add debug logging
+    console.log('Check domain status response:', data);
+    
+    // Check if the response is valid
+    if (!data) throw new Error('Invalid response from server');
+    
     return data;
   } catch (error) {
     console.error('Error checking domain status:', error);
     return {
       success: false,
-      message: `Failed to check domain status: ${error.message}`,
-      error: error.message
+      message: `Failed to check domain status: ${error instanceof Error ? error.message : String(error)}`,
+      error: error instanceof Error ? error.message : String(error)
     };
   }
 }
@@ -63,12 +77,16 @@ export async function removeDomain(domain: string): Promise<{ success: boolean; 
     });
 
     if (error) throw new Error(error.message);
+    
+    // Check if the response is valid
+    if (!data) throw new Error('Invalid response from server');
+    
     return data;
   } catch (error) {
     console.error('Error removing domain:', error);
     return {
       success: false,
-      message: `Failed to remove domain: ${error.message}`
+      message: `Failed to remove domain: ${error instanceof Error ? error.message : String(error)}`
     };
   }
 }
@@ -81,6 +99,13 @@ export async function getUserDomains(): Promise<string[]> {
     });
 
     if (error) throw new Error(error.message);
+    
+    // Check if the response is valid
+    if (!data || !data.domains) {
+      console.warn('Invalid or empty domains response:', data);
+      return [];
+    }
+    
     return data.domains || [];
   } catch (error) {
     console.error('Error fetching user domains:', error);
