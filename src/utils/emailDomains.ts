@@ -29,10 +29,15 @@ export async function addEmailDomain(domain: string): Promise<DomainVerification
     // Add debug logging
     console.log('Add domain response:', data);
     
-    // Check if the response is valid
-    if (!data) throw new Error('Invalid response from server');
+    // Return the response data directly if it's available
+    if (data) {
+      return data;
+    }
     
-    return data;
+    return {
+      success: false,
+      message: 'Invalid response from server',
+    };
   } catch (error) {
     console.error('Error adding email domain:', error);
     return {
@@ -55,10 +60,15 @@ export async function checkDomainStatus(domain: string): Promise<DomainVerificat
     // Add debug logging
     console.log('Check domain status response:', data);
     
-    // Check if the response is valid
-    if (!data) throw new Error('Invalid response from server');
+    // Return the response data directly if it's available
+    if (data) {
+      return data;
+    }
     
-    return data;
+    return {
+      success: false,
+      message: 'Invalid response from server',
+    };
   } catch (error) {
     console.error('Error checking domain status:', error);
     return {
@@ -81,10 +91,15 @@ export async function removeDomain(domain: string): Promise<{ success: boolean; 
     // Add more detailed logging
     console.log('Remove domain response:', data);
     
-    // Check if the response is valid
-    if (!data) throw new Error('Invalid response from server');
+    // Return the response data directly if it's available
+    if (data) {
+      return data;
+    }
     
-    return data;
+    return {
+      success: false,
+      message: 'Invalid response from server',
+    };
   } catch (error) {
     console.error('Error removing domain:', error);
     return {
@@ -102,6 +117,9 @@ export async function getUserDomains(): Promise<string[]> {
     });
 
     if (error) throw new Error(error.message);
+    
+    // Debug logging
+    console.log('Get user domains response:', data);
     
     // Check if the response is valid
     if (!data || !data.domains) {

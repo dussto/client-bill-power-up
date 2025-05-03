@@ -27,6 +27,7 @@ import {
 export default function EmailDomainManager() {
   const [domain, setDomain] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
   const [isChecking, setIsChecking] = useState<{[key: string]: boolean}>({});
   const [isRemoving, setIsRemoving] = useState<{[key: string]: boolean}>({});
   const [domains, setDomains] = useState<string[]>([]);
@@ -53,10 +54,21 @@ export default function EmailDomainManager() {
             ...prev,
             [domainName]: response.status
           }));
+          
+          // If we have DNS records and this is the first domain, set it as current
+          if (response.dnsRecords && response.dnsRecords.length > 0 && !currentDomain) {
+            setDnsRecords(response.dnsRecords);
+            setCurrentDomain(domainName);
+          }
         }
       }
     } catch (error) {
       console.error('Error fetching domains:', error);
+      toast({
+        title: "Error fetching domains",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -74,7 +86,7 @@ export default function EmailDomainManager() {
       return;
     }
 
-    setIsLoading(true);
+    setIsAdding(true);
     try {
       const response = await addEmailDomain(domain);
       
@@ -85,8 +97,8 @@ export default function EmailDomainManager() {
         });
         
         setDomain('');
-        await fetchUserDomains();
         
+        // If the API returned DNS records, show them immediately
         if (response.dnsRecords && response.dnsRecords.length > 0) {
           setDnsRecords(response.dnsRecords);
           setCurrentDomain(domain);
@@ -97,17 +109,20 @@ export default function EmailDomainManager() {
               [domain]: response.status
             }));
           }
-        } else {
-          console.warn('No DNS records received when adding domain:', domain);
-          // Try to get DNS records explicitly
-          await handleCheckStatus(domain);
         }
+        
+        // Refresh domains list
+        await fetchUserDomains();
       } else {
         toast({
           title: "Error adding domain",
           description: response.message,
           variant: "destructive",
         });
+        
+        // Even if there's an error, still fetch the domains list
+        // as the domain might have been added despite the error
+        await fetchUserDomains();
       }
     } catch (error) {
       console.error('Error in handleAddDomain:', error);
@@ -116,8 +131,11 @@ export default function EmailDomainManager() {
         description: error instanceof Error ? error.message : "Unknown error occurred",
         variant: "destructive",
       });
+      
+      // Still refresh the domains list
+      await fetchUserDomains();
     } finally {
-      setIsLoading(false);
+      setIsAdding(false);
     }
   };
 
@@ -138,14 +156,17 @@ export default function EmailDomainManager() {
         
         if (response.dnsRecords && response.dnsRecords.length > 0) {
           setDnsRecords(response.dnsRecords);
+          
+          toast({
+            title: `Domain status: ${response.status || 'pending'}`,
+            description: "DNS records loaded below. Please add these records to your domain provider.",
+          });
         } else {
-          console.warn('No DNS records received when checking domain:', domainToCheck);
+          toast({
+            title: `Domain status: ${response.status || 'pending'}`,
+            description: "No DNS records were returned. Please try again later.",
+          });
         }
-        
-        toast({
-          title: `Domain status: ${response.status || 'unknown'}`,
-          description: response.message,
-        });
       } else {
         toast({
           title: "Error checking status",
@@ -196,6 +217,9 @@ export default function EmailDomainManager() {
             description: response.message,
             variant: "destructive",
           });
+          
+          // Refresh domain list anyway to ensure UI is in sync
+          await fetchUserDomains();
         }
       } catch (error) {
         console.error('Error in handleRemoveDomain:', error);
@@ -204,6 +228,9 @@ export default function EmailDomainManager() {
           description: error instanceof Error ? error.message : "Unknown error occurred",
           variant: "destructive",
         });
+        
+        // Refresh domain list anyway to ensure UI is in sync
+        await fetchUserDomains();
       } finally {
         setIsRemoving(prev => ({ ...prev, [domainToRemove]: false }));
       }
@@ -235,9 +262,10 @@ export default function EmailDomainManager() {
               value={domain}
               onChange={(e) => setDomain(e.target.value)}
               className="flex-1"
+              disabled={isAdding}
             />
-            <Button type="submit" disabled={isLoading}>
-              {isLoading ? (
+            <Button type="submit" disabled={isAdding}>
+              {isAdding ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Adding...
@@ -255,9 +283,20 @@ export default function EmailDomainManager() {
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="text-sm font-medium">Your Domains</h3>
-              <Button variant="outline" size="sm" onClick={refreshDomains}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={refreshDomains}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Refresh
+                  </>
+                )}
               </Button>
             </div>
             
