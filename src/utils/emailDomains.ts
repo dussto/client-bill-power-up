@@ -24,7 +24,10 @@ export async function addEmailDomain(domain: string): Promise<DomainVerification
       body: { action: 'add', domain }
     });
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      console.error('Supabase function error:', error);
+      throw new Error(error.message);
+    }
     
     // Add debug logging
     console.log('Add domain response:', data);
@@ -55,7 +58,10 @@ export async function checkDomainStatus(domain: string): Promise<DomainVerificat
       body: { action: 'status', domain }
     });
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      console.error('Supabase function error:', error);
+      throw new Error(error.message);
+    }
     
     // Add debug logging
     console.log('Check domain status response:', data);
@@ -86,7 +92,10 @@ export async function removeDomain(domain: string): Promise<{ success: boolean; 
       body: { action: 'remove', domain }
     });
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      console.error('Supabase function error:', error);
+      throw new Error(error.message);
+    }
     
     // Add more detailed logging
     console.log('Remove domain response:', data);
@@ -116,7 +125,10 @@ export async function getUserDomains(): Promise<string[]> {
       body: { action: 'list' }
     });
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      console.error('Supabase function error:', error);
+      throw new Error(error.message);
+    }
     
     // Debug logging
     console.log('Get user domains response:', data);

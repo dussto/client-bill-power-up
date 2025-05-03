@@ -45,6 +45,7 @@ const handler = async (req: Request): Promise<Response> => {
           console.log("Add domain response:", JSON.stringify(response));
           
           if (response?.error) {
+            console.error("Resend API error:", response.error);
             throw new Error(response.error.message || 'Error adding domain');
           }
           
@@ -140,12 +141,30 @@ const handler = async (req: Request): Promise<Response> => {
         }
         
         try {
-          // Remove domain using the correct method name 'remove'
+          // Use the correct method to remove the domain
           const response = await resend.domains.remove(domain);
           console.log("Domain removal response:", JSON.stringify(response));
           
-          // Even if we get an error from Resend, we'll return success to the client
-          // as the domain might have been deleted already or never existed
+          // Check if there's an error in the response
+          if (response?.error) {
+            // If the error is about domain not found, we'll still return success
+            // as the end result is what the user wanted (domain not in Resend)
+            if (response.error.message?.includes("not found") || response.error.status === 404) {
+              console.log("Domain not found in Resend, already removed or never existed");
+              return new Response(JSON.stringify({
+                success: true,
+                message: `Domain ${domain} was removed or did not exist`,
+              }), {
+                status: 200,
+                headers: { "Content-Type": "application/json", ...corsHeaders },
+              });
+            }
+            
+            // For other errors, return an error response
+            console.error("Error removing domain:", response.error);
+            throw new Error(response.error.message || 'Error removing domain');
+          }
+          
           return new Response(JSON.stringify({
             success: true,
             message: `Domain ${domain} removed successfully`,
@@ -155,13 +174,25 @@ const handler = async (req: Request): Promise<Response> => {
           });
         } catch (error) {
           console.error("Error removing domain:", error);
-          // If resend API failed but it might not be critical (domain might not exist)
-          // we'll still return a "success" response to the client
+          
+          // Check if the error message indicates the domain was not found
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          if (errorMessage.includes("not found") || errorMessage.includes("404")) {
+            // If the domain wasn't found, we can consider this a "success" from the user's perspective
+            return new Response(JSON.stringify({
+              success: true,
+              message: `Domain ${domain} was removed or did not exist`,
+            }), {
+              status: 200,
+              headers: { "Content-Type": "application/json", ...corsHeaders },
+            });
+          }
+          
           return new Response(JSON.stringify({
-            success: true,
-            message: `Domain ${domain} was removed or did not exist`,
+            success: false,
+            message: `Failed to remove domain: ${errorMessage}`,
           }), {
-            status: 200,
+            status: 500,
             headers: { "Content-Type": "application/json", ...corsHeaders },
           });
         }
