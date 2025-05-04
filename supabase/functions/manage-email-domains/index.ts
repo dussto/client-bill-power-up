@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { Resend } from "npm:resend@1.0.0";
 
@@ -9,7 +10,7 @@ const corsHeaders = {
 };
 
 interface DomainRequest {
-  action: 'add' | 'remove' | 'status' | 'list';
+  action: 'add' | 'remove' | 'status' | 'list' | 'verify';
   domain?: string;
 }
 
@@ -48,24 +49,30 @@ const handler = async (req: Request): Promise<Response> => {
             throw new Error(response.error.message || 'Error adding domain');
           }
           
-          // Get the DNS records for verification
-          let dnsRecords = [];
+          // Get the DNS records for verification immediately after adding
           try {
             const dnsResponse = await resend.domains.verify(domain);
             console.log("DNS verification response:", JSON.stringify(dnsResponse));
             
             if (dnsResponse?.data?.records) {
-              dnsRecords = dnsResponse.data.records;
+              return new Response(JSON.stringify({
+                success: true,
+                message: `Domain ${domain} added successfully. Please add the DNS records to verify your domain.`,
+                dnsRecords: dnsResponse.data.records,
+                status: 'pending',
+              }), {
+                status: 200,
+                headers: { "Content-Type": "application/json", ...corsHeaders },
+              });
             }
           } catch (verifyError) {
             console.error("Error getting DNS records:", verifyError);
-            // Continue even if getting DNS records fails
           }
           
+          // If we couldn't get DNS records, return a response without them
           return new Response(JSON.stringify({
             success: true,
-            message: `Domain ${domain} added successfully. Please add the DNS records to verify your domain.`,
-            dnsRecords: dnsRecords,
+            message: `Domain ${domain} added successfully but couldn't fetch DNS records. Please check domain status.`,
             status: 'pending',
           }), {
             status: 200,
@@ -127,6 +134,52 @@ const handler = async (req: Request): Promise<Response> => {
           return new Response(JSON.stringify({
             success: false,
             message: `Failed to check domain status: ${error instanceof Error ? error.message : String(error)}`,
+          }), {
+            status: 500,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          });
+        }
+      }
+      
+      case 'verify': {
+        if (!domain) {
+          throw new Error('Domain is required');
+        }
+        
+        try {
+          // Manually request domain verification
+          const verifyResponse = await resend.domains.verify(domain);
+          console.log("Manual verification response:", JSON.stringify(verifyResponse));
+          
+          // Check the domain status after verification attempt
+          const domainResponse = await resend.domains.get(domain);
+          console.log("Domain status after verification:", JSON.stringify(domainResponse));
+          
+          let status = 'pending';
+          if (domainResponse?.data) {
+            status = domainResponse.data.status || 'pending';
+          }
+          
+          // Return DNS records if available
+          let dnsRecords = [];
+          if (verifyResponse?.data?.records) {
+            dnsRecords = verifyResponse.data.records;
+          }
+          
+          return new Response(JSON.stringify({
+            success: true,
+            message: `Domain verification attempted. Current status: ${status}`,
+            status: status,
+            dnsRecords: dnsRecords,
+          }), {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          });
+        } catch (error) {
+          console.error("Error in manual verification:", error);
+          return new Response(JSON.stringify({
+            success: false,
+            message: `Failed to verify domain: ${error instanceof Error ? error.message : String(error)}`,
           }), {
             status: 500,
             headers: { "Content-Type": "application/json", ...corsHeaders },

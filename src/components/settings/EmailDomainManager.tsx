@@ -5,12 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Loader2, Check, AlertTriangle, Plus, Trash2, RefreshCw } from 'lucide-react';
+import { Loader2, Check, AlertTriangle, Plus, Trash2, RefreshCw, Award } from 'lucide-react';
 import { 
   addEmailDomain, 
   checkDomainStatus, 
   removeDomain, 
-  getUserDomains, 
+  getUserDomains,
+  verifyDomain,
   DnsRecord 
 } from '@/utils/emailDomains';
 import { Badge } from '@/components/ui/badge';
@@ -29,10 +30,11 @@ export default function EmailDomainManager() {
   const [isLoading, setIsLoading] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [isChecking, setIsChecking] = useState<{[key: string]: boolean}>({});
+  const [isVerifying, setIsVerifying] = useState<{[key: string]: boolean}>({});
   const [isRemoving, setIsRemoving] = useState<{[key: string]: boolean}>({});
   const [domains, setDomains] = useState<string[]>([]);
   const [currentDomain, setCurrentDomain] = useState<string | null>(null);
-  const [dnsRecords, setDnsRecords] = useState<DnsRecord[]>([]);
+  const [dnsRecords, setDnsRecords] = useState<{[key: string]: DnsRecord[]}>({});
   const [verificationStatus, setVerificationStatus] = useState<{[key: string]: 'verified' | 'pending' | 'failed' | null}>({});
   const { toast } = useToast();
 
@@ -55,10 +57,12 @@ export default function EmailDomainManager() {
             [domainName]: response.status
           }));
           
-          // If we have DNS records and this is the first domain, set it as current
-          if (response.dnsRecords && response.dnsRecords.length > 0 && !currentDomain) {
-            setDnsRecords(response.dnsRecords);
-            setCurrentDomain(domainName);
+          // Store DNS records for each domain
+          if (response.dnsRecords && response.dnsRecords.length > 0) {
+            setDnsRecords(prev => ({
+              ...prev,
+              [domainName]: response.dnsRecords || []
+            }));
           }
         }
       }
@@ -96,11 +100,12 @@ export default function EmailDomainManager() {
           description: response.message,
         });
         
-        setDomain('');
-        
         // If the API returned DNS records, show them immediately
         if (response.dnsRecords && response.dnsRecords.length > 0) {
-          setDnsRecords(response.dnsRecords);
+          setDnsRecords(prev => ({
+            ...prev,
+            [domain]: response.dnsRecords || []
+          }));
           setCurrentDomain(domain);
           
           if (response.status) {
@@ -111,6 +116,9 @@ export default function EmailDomainManager() {
           }
         }
         
+        // Reset domain input
+        setDomain('');
+        
         // Refresh domains list
         await fetchUserDomains();
       } else {
@@ -119,10 +127,6 @@ export default function EmailDomainManager() {
           description: response.message,
           variant: "destructive",
         });
-        
-        // Even if there's an error, still fetch the domains list
-        // as the domain might have been added despite the error
-        await fetchUserDomains();
       }
     } catch (error) {
       console.error('Error in handleAddDomain:', error);
@@ -131,9 +135,6 @@ export default function EmailDomainManager() {
         description: error instanceof Error ? error.message : "Unknown error occurred",
         variant: "destructive",
       });
-      
-      // Still refresh the domains list
-      await fetchUserDomains();
     } finally {
       setIsAdding(false);
     }
@@ -141,7 +142,6 @@ export default function EmailDomainManager() {
 
   const handleCheckStatus = async (domainToCheck: string) => {
     setIsChecking(prev => ({ ...prev, [domainToCheck]: true }));
-    setCurrentDomain(domainToCheck);
     
     try {
       const response = await checkDomainStatus(domainToCheck);
@@ -155,7 +155,11 @@ export default function EmailDomainManager() {
         }
         
         if (response.dnsRecords && response.dnsRecords.length > 0) {
-          setDnsRecords(response.dnsRecords);
+          setDnsRecords(prev => ({
+            ...prev,
+            [domainToCheck]: response.dnsRecords || []
+          }));
+          setCurrentDomain(domainToCheck);
           
           toast({
             title: `Domain status: ${response.status || 'pending'}`,
@@ -186,6 +190,53 @@ export default function EmailDomainManager() {
     }
   };
 
+  const handleVerifyDomain = async (domainToVerify: string) => {
+    setIsVerifying(prev => ({ ...prev, [domainToVerify]: true }));
+    
+    try {
+      const response = await verifyDomain(domainToVerify);
+      
+      if (response.success) {
+        if (response.status) {
+          setVerificationStatus(prev => ({
+            ...prev,
+            [domainToVerify]: response.status
+          }));
+        }
+        
+        if (response.dnsRecords && response.dnsRecords.length > 0) {
+          setDnsRecords(prev => ({
+            ...prev,
+            [domainToVerify]: response.dnsRecords || []
+          }));
+        }
+        
+        setCurrentDomain(domainToVerify);
+        
+        toast({
+          title: `Domain verification ${response.status === 'verified' ? 'successful' : 'in progress'}`,
+          description: response.message,
+          variant: response.status === 'verified' ? 'default' : 'default',
+        });
+      } else {
+        toast({
+          title: "Error verifying domain",
+          description: response.message,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error in handleVerifyDomain:', error);
+      toast({
+        title: "Error verifying domain",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setIsVerifying(prev => ({ ...prev, [domainToVerify]: false }));
+    }
+  };
+
   const handleRemoveDomain = async (domainToRemove: string) => {
     if (confirm(`Are you sure you want to remove "${domainToRemove}"?`)) {
       setIsRemoving(prev => ({ ...prev, [domainToRemove]: true }));
@@ -202,15 +253,20 @@ export default function EmailDomainManager() {
           // Remove from local state
           setDomains(domains.filter(d => d !== domainToRemove));
           
+          // Remove domain data from state
           if (currentDomain === domainToRemove) {
             setCurrentDomain(null);
-            setDnsRecords([]);
           }
           
           // Remove from verification status
           const newVerificationStatus = { ...verificationStatus };
           delete newVerificationStatus[domainToRemove];
           setVerificationStatus(newVerificationStatus);
+          
+          // Remove from DNS records
+          const newDnsRecords = { ...dnsRecords };
+          delete newDnsRecords[domainToRemove];
+          setDnsRecords(newDnsRecords);
         } else {
           toast({
             title: "Error removing domain",
@@ -243,6 +299,10 @@ export default function EmailDomainManager() {
       title: "Domains refreshed",
       description: "Domain list has been updated.",
     });
+  };
+
+  const showDnsRecords = (domainName: string) => {
+    setCurrentDomain(domainName);
   };
 
   return (
@@ -325,6 +385,35 @@ export default function EmailDomainManager() {
                       )}
                     </div>
                     <div className="flex space-x-2">
+                      {/* Show DNS records button */}
+                      {dnsRecords[domainName] && verificationStatus[domainName] !== 'verified' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => showDnsRecords(domainName)}
+                        >
+                          Show DNS Records
+                        </Button>
+                      )}
+                      
+                      {/* Verify domain button for pending domains */}
+                      {verificationStatus[domainName] === 'pending' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleVerifyDomain(domainName)}
+                          disabled={isVerifying[domainName]}
+                        >
+                          {isVerifying[domainName] ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                          ) : (
+                            <Award className="h-4 w-4 mr-1" />
+                          )}
+                          Verify
+                        </Button>
+                      )}
+                      
+                      {/* Check status button */}
                       <Button 
                         variant="outline" 
                         size="sm" 
@@ -337,6 +426,8 @@ export default function EmailDomainManager() {
                           "Check Status"
                         )}
                       </Button>
+                      
+                      {/* Remove domain button */}
                       <Button 
                         variant="outline" 
                         size="sm" 
@@ -368,7 +459,7 @@ export default function EmailDomainManager() {
       </Card>
 
       {/* DNS Records */}
-      {currentDomain && dnsRecords.length > 0 && (
+      {currentDomain && dnsRecords[currentDomain] && dnsRecords[currentDomain].length > 0 && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -395,24 +486,24 @@ export default function EmailDomainManager() {
                   <TableHead>Type</TableHead>
                   <TableHead>Host/Name</TableHead>
                   <TableHead>Value/Content</TableHead>
-                  {dnsRecords.some(record => record.priority !== undefined) && (
+                  {dnsRecords[currentDomain].some(record => record.priority !== undefined) && (
                     <TableHead>Priority</TableHead>
                   )}
-                  {dnsRecords.some(record => record.ttl !== undefined) && (
+                  {dnsRecords[currentDomain].some(record => record.ttl !== undefined) && (
                     <TableHead>TTL</TableHead>
                   )}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {dnsRecords.map((record, index) => (
+                {dnsRecords[currentDomain].map((record, index) => (
                   <TableRow key={index}>
                     <TableCell className="font-medium">{record.type}</TableCell>
                     <TableCell>{record.name}</TableCell>
                     <TableCell className="font-mono text-xs break-all">{record.value}</TableCell>
-                    {dnsRecords.some(record => record.priority !== undefined) && (
+                    {dnsRecords[currentDomain].some(record => record.priority !== undefined) && (
                       <TableCell>{record.priority || 'N/A'}</TableCell>
                     )}
-                    {dnsRecords.some(record => record.ttl !== undefined) && (
+                    {dnsRecords[currentDomain].some(record => record.ttl !== undefined) && (
                       <TableCell>{record.ttl || 'Auto'}</TableCell>
                     )}
                   </TableRow>
@@ -422,9 +513,40 @@ export default function EmailDomainManager() {
             
             <Separator className="my-4" />
             
-            <div className="text-sm text-muted-foreground">
-              <p className="mb-2">DNS changes can take up to 24-48 hours to propagate globally.</p>
-              <p>Click "Check Status" to verify if your domain has been validated.</p>
+            <div className="flex justify-between items-center mt-4">
+              <div className="text-sm text-muted-foreground">
+                <p>DNS changes can take up to 24-48 hours to propagate globally.</p>
+              </div>
+              {verificationStatus[currentDomain] !== 'verified' && (
+                <div className="flex space-x-2">
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => handleVerifyDomain(currentDomain)}
+                    disabled={isVerifying[currentDomain]}
+                  >
+                    {isVerifying[currentDomain] ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                    ) : (
+                      <Award className="h-4 w-4 mr-1" />
+                    )}
+                    Verify Domain
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleCheckStatus(currentDomain)}
+                    disabled={isChecking[currentDomain]}
+                  >
+                    {isChecking[currentDomain] ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-1" />
+                    )}
+                    Check Status
+                  </Button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

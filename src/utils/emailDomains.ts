@@ -51,6 +51,40 @@ export async function addEmailDomain(domain: string): Promise<DomainVerification
   }
 }
 
+export async function verifyDomain(domain: string): Promise<DomainVerificationResponse> {
+  try {
+    // Call the Supabase function to manually verify a domain
+    const { data, error } = await supabase.functions.invoke('manage-email-domains', {
+      body: { action: 'verify', domain }
+    });
+
+    if (error) {
+      console.error('Supabase function error:', error);
+      throw new Error(error.message);
+    }
+    
+    // Add debug logging
+    console.log('Verify domain response:', data);
+    
+    // Return the response data directly if it's available
+    if (data) {
+      return data;
+    }
+    
+    return {
+      success: false,
+      message: 'Invalid response from server',
+    };
+  } catch (error) {
+    console.error('Error verifying domain:', error);
+    return {
+      success: false,
+      message: `Failed to verify domain: ${error instanceof Error ? error.message : String(error)}`,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
 export async function checkDomainStatus(domain: string): Promise<DomainVerificationResponse> {
   try {
     // Call the Supabase function to check domain verification status

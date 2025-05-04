@@ -42,6 +42,7 @@ export default function SendInvoicePage() {
   const [testModeInfo, setTestModeInfo] = useState<string | null>(null);
   const [verifiedDomains, setVerifiedDomains] = useState<string[]>([]);
   const [isLoadingDomains, setIsLoadingDomains] = useState(false);
+  const [pageLoaded, setPageLoaded] = useState(false); // Track if page is fully loaded
 
   const [emailData, setEmailData] = useState({
     to: '',
@@ -53,9 +54,37 @@ export default function SendInvoicePage() {
     fromName: '',
   });
   
-  const invoice = getInvoice(invoiceId || '');
+  const [invoice, setInvoice] = useState<any>(null);
   const [client, setClient] = useState<any>(null);
   const currentUser = getUser();
+
+  // Load invoice data
+  useEffect(() => {
+    const initializeInvoice = () => {
+      if (!invoiceId) {
+        navigate('/invoices', { replace: true });
+        return;
+      }
+      
+      const invoiceData = getInvoice(invoiceId);
+      if (!invoiceData) {
+        navigate('/invoices', { replace: true });
+        return;
+      }
+      
+      setInvoice(invoiceData);
+      
+      const clientData = getClient(invoiceData.clientId);
+      if (!clientData) {
+        navigate('/invoices', { replace: true });
+        return;
+      }
+      
+      setClient(clientData);
+    };
+    
+    initializeInvoice();
+  }, [invoiceId, getInvoice, getClient, navigate]);
   
   // Load user's verified domains
   useEffect(() => {
@@ -63,43 +92,48 @@ export default function SendInvoicePage() {
       try {
         setIsLoadingDomains(true);
         const domains = await getUserDomains();
-        setVerifiedDomains(domains);
+        setVerifiedDomains(domains || []);
       } catch (error) {
         console.error("Error loading domains:", error);
+        toast({
+          title: "Error loading domains",
+          description: "Could not load your verified domains. You can still send test emails.",
+        });
       } finally {
         setIsLoadingDomains(false);
       }
     };
     
     loadVerifiedDomains();
-  }, []);
+  }, [toast]);
   
+  // Initialize email data after client and invoice are loaded
   useEffect(() => {
-    if (!invoice) {
-      navigate('/invoices', { replace: true });
-      return;
-    }
-    
-    const clientData = getClient(invoice.clientId);
-    setClient(clientData);
-    
-    if (clientData) {
+    if (client && invoice && currentUser) {
       const formattedDate = formatDate(invoice.dueDate);
       
       setEmailData({
-        to: clientData.email,
+        to: client.email,
         subject: `Invoice #${invoice.invoiceNumber} from ${currentUser?.company || 'Your Company'}`,
-        message: `Dear ${clientData.fullName},\n\nPlease find attached invoice #${invoice.invoiceNumber} for $${invoice.total.toFixed(2)}.\n\nPayment is due by ${formattedDate}.\n\nThank you for your business.\n\nSincerely,\n${currentUser?.fullName || 'Your Name'}\n${currentUser?.company || 'Your Company'}`,
+        message: `Dear ${client.fullName},\n\nPlease find attached invoice #${invoice.invoiceNumber} for $${invoice.total.toFixed(2)}.\n\nPayment is due by ${formattedDate}.\n\nThank you for your business.\n\nSincerely,\n${currentUser?.fullName || 'Your Name'}\n${currentUser?.company || 'Your Company'}`,
         copy: true,
         markAsSent: true,
         fromDomain: '',
         fromName: currentUser?.company || 'Your Company',
       });
+      
+      setPageLoaded(true); // Mark page as loaded once all data is ready
     }
-  }, [invoice, navigate, getClient]);
-  
-  if (!invoice || !client) {
-    return null;
+  }, [client, invoice, currentUser]);
+
+  if (!pageLoaded) {
+    return (
+      <DashboardLayout>
+        <div className="flex justify-center items-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      </DashboardLayout>
+    );
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -178,7 +212,7 @@ export default function SendInvoicePage() {
         // Only navigate away if not in test mode
         navigate(`/invoices/${invoice.id}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error sending invoice:", error);
       toast({
         title: "Error sending invoice",
@@ -199,10 +233,10 @@ export default function SendInvoicePage() {
           </Button>
           <div>
             <h1 className="text-3xl font-bold tracking-tight">
-              Send Invoice #{invoice.invoiceNumber}
+              Send Invoice #{invoice?.invoiceNumber}
             </h1>
             <p className="text-muted-foreground">
-              Send the invoice to {client.fullName}
+              Send the invoice to {client?.fullName}
             </p>
           </div>
         </div>

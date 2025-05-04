@@ -19,8 +19,8 @@ interface InvoiceEmailRequest {
   clientName: string;
   amount: number;
   dueDate: string;
-  fromDomain?: string; // New optional parameter for sender domain
-  fromName?: string;   // New optional parameter for sender name
+  fromDomain?: string; // Optional parameter for sender domain
+  fromName?: string;   // Optional parameter for sender name
 }
 
 // Helper function to get domain from email address
@@ -72,29 +72,43 @@ const handler = async (req: Request): Promise<Response> => {
       try {
         // Verify domain status with Resend
         const domainResponse = await resend.domains.get(fromDomain);
+        console.log("Domain verification response:", JSON.stringify(domainResponse));
         
         if (domainResponse.data && domainResponse.data.status === 'verified') {
           // Use custom domain if it's verified
           const senderName = fromName || 'Invoice Service';
           fromEmail = `${senderName} <invoices@${fromDomain}>`;
           isUsingCustomDomain = true;
+          console.log("Using verified custom domain:", fromDomain);
+        } else {
+          console.log("Domain is not verified yet:", fromDomain, "Status:", domainResponse?.data?.status);
         }
       } catch (error) {
-        console.log(`Custom domain validation failed: ${error.message}. Falling back to default email.`);
+        console.error(`Custom domain validation failed: ${error instanceof Error ? error.message : String(error)}. Falling back to default email.`);
       }
+    } else {
+      console.log("No custom domain provided, using default sending address");
     }
     
-    // Fall back to verified email if custom domain is not available
+    // If no custom domain is configured, we'll always use the test email
     if (!isUsingCustomDomain) {
       // Get the verified email from environment or fallback
       const verifiedEmail = Deno.env.get("RESEND_VERIFIED_EMAIL") || "onboarding@resend.dev";
       fromEmail = `Invoice Creator <${verifiedEmail}>`;
+      console.log("Using default sending address:", fromEmail);
     }
+
+    // Always send to the actual recipient when using a verified domain
+    const recipients = isUsingCustomDomain 
+      ? [to]
+      : [Deno.env.get("RESEND_VERIFIED_EMAIL") || "onboarding@resend.dev"];
+    
+    console.log("Sending email to:", recipients);
     
     // Set up email sending options
     const emailOptions = {
       from: fromEmail,
-      to: isUsingCustomDomain ? [to] : [Deno.env.get("RESEND_VERIFIED_EMAIL") || "onboarding@resend.dev"], // Only send to actual recipient if using verified domain
+      to: recipients,
       reply_to: replyTo,
       subject: isUsingCustomDomain ? subject : `${subject} (Originally to: ${to})`,
       html: htmlContent,
@@ -115,10 +129,16 @@ const handler = async (req: Request): Promise<Response> => {
       emailOptions.bcc = [replyTo];
     }
 
+    console.log("Sending email with options:", JSON.stringify({
+      ...emailOptions,
+      html: "[HTML Content]" // Don't log the full HTML
+    }));
+
     const emailResponse = await resend.emails.send(emailOptions);
     
     if (emailResponse.error) {
-      throw new Error(emailResponse.error);
+      console.error("Error sending email:", emailResponse.error);
+      throw new Error(emailResponse.error.message || JSON.stringify(emailResponse.error));
     }
     
     console.log("Email sent successfully:", emailResponse);
@@ -128,7 +148,7 @@ const handler = async (req: Request): Promise<Response> => {
       message: isUsingCustomDomain ? 
         "Email sent successfully to client." : 
         "Email sent to your test email address. To send to actual clients, verify a domain in Resend.",
-      recipient: isUsingCustomDomain ? to : Deno.env.get("RESEND_VERIFIED_EMAIL") || "onboarding@resend.dev",
+      recipient: recipients[0],
       originalRecipient: to,
       usedCustomDomain: isUsingCustomDomain,
       fromEmail: fromEmail
@@ -141,7 +161,7 @@ const handler = async (req: Request): Promise<Response> => {
     return new Response(
       JSON.stringify({ 
         success: false,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         hint: "If you're in testing mode, you need to verify a domain in Resend or set RESEND_VERIFIED_EMAIL to your verified email."
       }),
       {
