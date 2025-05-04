@@ -38,6 +38,7 @@ const handler = async (req: Request): Promise<Response> => {
         
         try {
           // Call Resend API to add domain
+          console.log(`Adding domain: ${domain}`);
           const response = await resend.domains.create({
             name: domain,
           });
@@ -49,8 +50,13 @@ const handler = async (req: Request): Promise<Response> => {
             throw new Error(response.error.message || 'Error adding domain');
           }
           
+          // Introduce a small delay to allow Resend to process the domain creation
+          // This helps ensure DNS records are available when we query for them
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
           // Get the DNS records for verification immediately after adding
           try {
+            console.log(`Fetching DNS records for domain: ${domain}`);
             const dnsResponse = await resend.domains.verify(domain);
             console.log("DNS verification response:", JSON.stringify(dnsResponse));
             
@@ -64,9 +70,52 @@ const handler = async (req: Request): Promise<Response> => {
                 status: 200,
                 headers: { "Content-Type": "application/json", ...corsHeaders },
               });
+            } else {
+              // Fallback: Try to get domain details directly which might include records
+              console.log(`Attempting to get domain details for: ${domain}`);
+              const domainDetails = await resend.domains.get(domain);
+              console.log("Domain details response:", JSON.stringify(domainDetails));
+              
+              if (domainDetails?.data?.records) {
+                return new Response(JSON.stringify({
+                  success: true,
+                  message: `Domain ${domain} added successfully. Please add the DNS records to verify your domain.`,
+                  dnsRecords: domainDetails.data.records,
+                  status: domainDetails.data.status || 'pending',
+                }), {
+                  status: 200,
+                  headers: { "Content-Type": "application/json", ...corsHeaders },
+                });
+              }
             }
           } catch (verifyError) {
             console.error("Error getting DNS records:", verifyError);
+            
+            // One more attempt - get domain from list
+            try {
+              console.log("Attempting to get domain records from domains list");
+              const listResponse = await resend.domains.list();
+              const addedDomain = listResponse?.data?.find(d => d.name === domain);
+              
+              if (addedDomain?.id) {
+                const domainDetails = await resend.domains.get(addedDomain.id);
+                console.log("Domain details from list:", JSON.stringify(domainDetails));
+                
+                if (domainDetails?.data?.records) {
+                  return new Response(JSON.stringify({
+                    success: true,
+                    message: `Domain ${domain} added successfully. Please add the DNS records to verify your domain.`,
+                    dnsRecords: domainDetails.data.records,
+                    status: domainDetails.data.status || 'pending',
+                  }), {
+                    status: 200,
+                    headers: { "Content-Type": "application/json", ...corsHeaders },
+                  });
+                }
+              }
+            } catch (listError) {
+              console.error("Error getting domain from list:", listError);
+            }
           }
           
           // If we couldn't get DNS records, return a response without them
@@ -96,8 +145,26 @@ const handler = async (req: Request): Promise<Response> => {
         }
 
         try {
-          // Check domain status
-          const domainResponse = await resend.domains.get(domain);
+          console.log(`Checking status for domain: ${domain}`);
+          
+          // First, get the domain ID from the list
+          const listResponse = await resend.domains.list();
+          console.log("Domains list response:", JSON.stringify(listResponse));
+          
+          const domainData = listResponse?.data?.find(d => d.name === domain);
+          
+          if (!domainData) {
+            return new Response(JSON.stringify({
+              success: false,
+              message: `Domain ${domain} not found`,
+            }), {
+              status: 404,
+              headers: { "Content-Type": "application/json", ...corsHeaders },
+            });
+          }
+          
+          // Check domain status using ID
+          const domainResponse = await resend.domains.get(domainData.id);
           console.log("Domain status response:", JSON.stringify(domainResponse));
           
           // Get DNS records if the domain exists
@@ -106,18 +173,24 @@ const handler = async (req: Request): Promise<Response> => {
           
           if (domainResponse?.data) {
             status = domainResponse.data.status || 'pending';
-          }
-          
-          try {
-            const verifyResponse = await resend.domains.verify(domain);
-            console.log("Verification response:", JSON.stringify(verifyResponse));
             
-            if (verifyResponse?.data?.records) {
-              dnsRecords = verifyResponse.data.records;
+            // If records are available in the domain details
+            if (domainResponse.data.records) {
+              dnsRecords = domainResponse.data.records;
+            } else {
+              // Try to get DNS records from verify endpoint
+              try {
+                const verifyResponse = await resend.domains.verify(domain);
+                console.log("Verification response:", JSON.stringify(verifyResponse));
+                
+                if (verifyResponse?.data?.records) {
+                  dnsRecords = verifyResponse.data.records;
+                }
+              } catch (verifyError) {
+                console.error("Error verifying domain:", verifyError);
+                // Continue even if verification fails
+              }
             }
-          } catch (verifyError) {
-            console.error("Error verifying domain:", verifyError);
-            // Continue even if verification fails
           }
           
           return new Response(JSON.stringify({
@@ -147,12 +220,30 @@ const handler = async (req: Request): Promise<Response> => {
         }
         
         try {
+          console.log(`Manually verifying domain: ${domain}`);
+          
+          // First, get the domain ID from the list
+          const listResponse = await resend.domains.list();
+          console.log("Domains list for verification:", JSON.stringify(listResponse));
+          
+          const domainData = listResponse?.data?.find(d => d.name === domain);
+          
+          if (!domainData) {
+            return new Response(JSON.stringify({
+              success: false,
+              message: `Domain ${domain} not found for verification`,
+            }), {
+              status: 404,
+              headers: { "Content-Type": "application/json", ...corsHeaders },
+            });
+          }
+          
           // Manually request domain verification
           const verifyResponse = await resend.domains.verify(domain);
           console.log("Manual verification response:", JSON.stringify(verifyResponse));
           
           // Check the domain status after verification attempt
-          const domainResponse = await resend.domains.get(domain);
+          const domainResponse = await resend.domains.get(domainData.id);
           console.log("Domain status after verification:", JSON.stringify(domainResponse));
           
           let status = 'pending';
@@ -164,6 +255,8 @@ const handler = async (req: Request): Promise<Response> => {
           let dnsRecords = [];
           if (verifyResponse?.data?.records) {
             dnsRecords = verifyResponse.data.records;
+          } else if (domainResponse?.data?.records) {
+            dnsRecords = domainResponse.data.records;
           }
           
           return new Response(JSON.stringify({
@@ -193,6 +286,8 @@ const handler = async (req: Request): Promise<Response> => {
         }
         
         try {
+          console.log(`Removing domain: ${domain}`);
+          
           // List all domains to find the domain ID
           const listResponse = await resend.domains.list();
           console.log("List domains response before removal:", JSON.stringify(listResponse));
@@ -271,6 +366,7 @@ const handler = async (req: Request): Promise<Response> => {
       case 'list': {
         try {
           // List all domains for the user
+          console.log("Listing domains");
           const response = await resend.domains.list();
           console.log("List domains response:", JSON.stringify(response));
           

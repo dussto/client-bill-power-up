@@ -19,6 +19,8 @@ export interface DomainVerificationResponse {
 
 export async function addEmailDomain(domain: string): Promise<DomainVerificationResponse> {
   try {
+    console.log(`Adding domain: ${domain}`);
+    
     // Call the Supabase function to add a domain to Resend
     const { data, error } = await supabase.functions.invoke('manage-email-domains', {
       body: { action: 'add', domain }
@@ -53,6 +55,8 @@ export async function addEmailDomain(domain: string): Promise<DomainVerification
 
 export async function verifyDomain(domain: string): Promise<DomainVerificationResponse> {
   try {
+    console.log(`Verifying domain: ${domain}`);
+    
     // Call the Supabase function to manually verify a domain
     const { data, error } = await supabase.functions.invoke('manage-email-domains', {
       body: { action: 'verify', domain }
@@ -87,6 +91,8 @@ export async function verifyDomain(domain: string): Promise<DomainVerificationRe
 
 export async function checkDomainStatus(domain: string): Promise<DomainVerificationResponse> {
   try {
+    console.log(`Checking domain status: ${domain}`);
+    
     // Call the Supabase function to check domain verification status
     const { data, error } = await supabase.functions.invoke('manage-email-domains', {
       body: { action: 'status', domain }
@@ -121,6 +127,8 @@ export async function checkDomainStatus(domain: string): Promise<DomainVerificat
 
 export async function removeDomain(domain: string): Promise<{ success: boolean; message: string }> {
   try {
+    console.log(`Removing domain: ${domain}`);
+    
     // Call the Supabase function to remove a domain
     const { data, error } = await supabase.functions.invoke('manage-email-domains', {
       body: { action: 'remove', domain }
@@ -154,6 +162,8 @@ export async function removeDomain(domain: string): Promise<{ success: boolean; 
 
 export async function getUserDomains(): Promise<string[]> {
   try {
+    console.log('Getting user domains');
+    
     // Call the Supabase function to get all user domains
     const { data, error } = await supabase.functions.invoke('manage-email-domains', {
       body: { action: 'list' }
