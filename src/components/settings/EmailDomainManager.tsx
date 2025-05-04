@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Loader2, Check, AlertTriangle, Plus, Trash2, RefreshCw, Award } from 'lucide-react';
+import { Loader2, Check, AlertTriangle, Plus, Trash2, RefreshCw, Award, ExternalLink } from 'lucide-react';
 import { 
   addEmailDomain, 
   checkDomainStatus, 
@@ -35,7 +35,7 @@ export default function EmailDomainManager() {
   const [domains, setDomains] = useState<string[]>([]);
   const [currentDomain, setCurrentDomain] = useState<string | null>(null);
   const [dnsRecords, setDnsRecords] = useState<{[key: string]: DnsRecord[]}>({});
-  const [verificationStatus, setVerificationStatus] = useState<{[key: string]: 'verified' | 'pending' | 'failed' | null}>({});
+  const [verificationStatus, setVerificationStatus] = useState<{[key: string]: 'verified' | 'pending' | 'failed' | 'not_started' | null}>({});
   const { toast } = useToast();
 
   useEffect(() => {
@@ -95,9 +95,12 @@ export default function EmailDomainManager() {
       const response = await addEmailDomain(domain);
       
       if (response.success) {
+        // Show toast with success message
         toast({
           title: "Domain added",
-          description: response.message,
+          description: response.dnsRecords && response.dnsRecords.length > 0 
+            ? "DNS records are available below. Add these to your domain provider to verify ownership."
+            : response.message,
         });
         
         // If the API returned DNS records, show them immediately
@@ -113,6 +116,37 @@ export default function EmailDomainManager() {
               ...prev,
               [domain]: response.status
             }));
+          }
+        } else {
+          // If no DNS records were returned, try to check status immediately
+          const statusResponse = await checkDomainStatus(domain);
+          
+          if (statusResponse.success && statusResponse.dnsRecords && statusResponse.dnsRecords.length > 0) {
+            setDnsRecords(prev => ({
+              ...prev,
+              [domain]: statusResponse.dnsRecords
+            }));
+            setCurrentDomain(domain);
+            
+            if (statusResponse.status) {
+              setVerificationStatus(prev => ({
+                ...prev,
+                [domain]: statusResponse.status
+              }));
+            }
+            
+            // Update toast message to indicate DNS records are now available
+            toast({
+              title: "DNS Records Retrieved",
+              description: "DNS records are now available below. Add these to your domain provider to verify ownership.",
+            });
+          } else {
+            // If still no DNS records, set a message
+            toast({
+              title: "DNS Records Not Available",
+              description: "Could not retrieve DNS records immediately. Please check domain status in a few moments.",
+              variant: "destructive",
+            });
           }
         }
         
@@ -343,21 +377,36 @@ export default function EmailDomainManager() {
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="text-sm font-medium">Your Domains</h3>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={refreshDomains}
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Refresh
-                  </>
-                )}
-              </Button>
+              <div className="flex space-x-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={refreshDomains}
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Refresh
+                    </>
+                  )}
+                </Button>
+                <a 
+                  href="https://resend.com/domains" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                >
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Resend Dashboard
+                  </Button>
+                </a>
+              </div>
             </div>
             
             {isLoading && domains.length === 0 ? (
@@ -386,18 +435,16 @@ export default function EmailDomainManager() {
                     </div>
                     <div className="flex space-x-2">
                       {/* Show DNS records button */}
-                      {dnsRecords[domainName] && verificationStatus[domainName] !== 'verified' && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => showDnsRecords(domainName)}
-                        >
-                          Show DNS Records
-                        </Button>
-                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => showDnsRecords(domainName)}
+                      >
+                        Show DNS Records
+                      </Button>
                       
                       {/* Verify domain button for pending domains */}
-                      {verificationStatus[domainName] === 'pending' && (
+                      {verificationStatus[domainName] !== 'verified' && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -459,7 +506,7 @@ export default function EmailDomainManager() {
       </Card>
 
       {/* DNS Records */}
-      {currentDomain && dnsRecords[currentDomain] && dnsRecords[currentDomain].length > 0 && (
+      {currentDomain && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -480,36 +527,59 @@ export default function EmailDomainManager() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Host/Name</TableHead>
-                  <TableHead>Value/Content</TableHead>
-                  {dnsRecords[currentDomain].some(record => record.priority !== undefined) && (
-                    <TableHead>Priority</TableHead>
+            {dnsRecords[currentDomain] && dnsRecords[currentDomain].length > 0 ? (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Host/Name</TableHead>
+                      <TableHead>Value/Content</TableHead>
+                      {dnsRecords[currentDomain].some(record => record.priority !== undefined) && (
+                        <TableHead>Priority</TableHead>
+                      )}
+                      {dnsRecords[currentDomain].some(record => record.ttl !== undefined) && (
+                        <TableHead>TTL</TableHead>
+                      )}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dnsRecords[currentDomain].map((record, index) => (
+                      <TableRow key={index}>
+                        <TableCell className="font-medium">{record.type}</TableCell>
+                        <TableCell>{record.name}</TableCell>
+                        <TableCell className="font-mono text-xs break-all">{record.value}</TableCell>
+                        {dnsRecords[currentDomain].some(record => record.priority !== undefined) && (
+                          <TableCell>{record.priority || 'N/A'}</TableCell>
+                        )}
+                        {dnsRecords[currentDomain].some(record => record.ttl !== undefined) && (
+                          <TableCell>{record.ttl || 'Auto'}</TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center p-6">
+                <AlertTriangle className="h-10 w-10 text-amber-500 mb-2" />
+                <p className="text-center text-muted-foreground">DNS records not available. Click "Check Status" to attempt to retrieve them.</p>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => handleCheckStatus(currentDomain)}
+                  disabled={isChecking[currentDomain]}
+                  className="mt-4"
+                >
+                  {isChecking[currentDomain] ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4 mr-1" />
                   )}
-                  {dnsRecords[currentDomain].some(record => record.ttl !== undefined) && (
-                    <TableHead>TTL</TableHead>
-                  )}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {dnsRecords[currentDomain].map((record, index) => (
-                  <TableRow key={index}>
-                    <TableCell className="font-medium">{record.type}</TableCell>
-                    <TableCell>{record.name}</TableCell>
-                    <TableCell className="font-mono text-xs break-all">{record.value}</TableCell>
-                    {dnsRecords[currentDomain].some(record => record.priority !== undefined) && (
-                      <TableCell>{record.priority || 'N/A'}</TableCell>
-                    )}
-                    {dnsRecords[currentDomain].some(record => record.ttl !== undefined) && (
-                      <TableCell>{record.ttl || 'Auto'}</TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                  Check Status
+                </Button>
+              </div>
+            )}
             
             <Separator className="my-4" />
             

@@ -12,7 +12,7 @@ export interface DnsRecord {
 export interface DomainVerificationResponse {
   success: boolean;
   message: string;
-  status?: 'verified' | 'pending' | 'failed';
+  status?: 'verified' | 'pending' | 'failed' | 'not_started';
   dnsRecords?: DnsRecord[];
   error?: string;
 }
@@ -33,6 +33,26 @@ export async function addEmailDomain(domain: string): Promise<DomainVerification
     
     // Add debug logging
     console.log('Add domain response:', data);
+    
+    // If no DNS records were returned immediately, try to get them by checking the status
+    if (data && data.success && (!data.dnsRecords || data.dnsRecords.length === 0)) {
+      console.log('No DNS records returned, checking domain status to retrieve them...');
+      
+      // Wait a moment before checking status
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const statusResponse = await checkDomainStatus(domain);
+      
+      // If status check returned DNS records, merge them with the original response
+      if (statusResponse.success && statusResponse.dnsRecords && statusResponse.dnsRecords.length > 0) {
+        console.log('Retrieved DNS records from status check:', statusResponse.dnsRecords);
+        return {
+          ...data,
+          dnsRecords: statusResponse.dnsRecords,
+          status: statusResponse.status || data.status
+        };
+      }
+    }
     
     // Return the response data directly if it's available
     if (data) {
