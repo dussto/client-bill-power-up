@@ -41,16 +41,25 @@ export async function addEmailDomain(domain: string): Promise<DomainVerification
       // Wait a moment before checking status
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      const statusResponse = await checkDomainStatus(domain);
-      
-      // If status check returned DNS records, merge them with the original response
-      if (statusResponse.success && statusResponse.dnsRecords && statusResponse.dnsRecords.length > 0) {
-        console.log('Retrieved DNS records from status check:', statusResponse.dnsRecords);
-        return {
-          ...data,
-          dnsRecords: statusResponse.dnsRecords,
-          status: statusResponse.status || data.status
-        };
+      // Try multiple times to get DNS records
+      for (let i = 0; i < 3; i++) {
+        console.log(`Attempt ${i+1} to retrieve DNS records...`);
+        const statusResponse = await checkDomainStatus(domain);
+        
+        // If status check returned DNS records, merge them with the original response
+        if (statusResponse.success && statusResponse.dnsRecords && statusResponse.dnsRecords.length > 0) {
+          console.log('Retrieved DNS records from status check:', statusResponse.dnsRecords);
+          return {
+            ...data,
+            dnsRecords: statusResponse.dnsRecords,
+            status: statusResponse.status || data.status
+          };
+        }
+        
+        // Wait between attempts
+        if (i < 2) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
       }
     }
     
@@ -90,6 +99,22 @@ export async function verifyDomain(domain: string): Promise<DomainVerificationRe
     // Add debug logging
     console.log('Verify domain response:', data);
     
+    // If verification didn't return DNS records, try to get them
+    if (data && data.success && (!data.dnsRecords || data.dnsRecords.length === 0)) {
+      console.log('No DNS records returned in verification, trying to retrieve them...');
+      
+      // Try to get DNS records through status check
+      const statusResponse = await checkDomainStatus(domain);
+      
+      if (statusResponse.success && statusResponse.dnsRecords && statusResponse.dnsRecords.length > 0) {
+        console.log('Retrieved DNS records from status check:', statusResponse.dnsRecords);
+        return {
+          ...data,
+          dnsRecords: statusResponse.dnsRecords
+        };
+      }
+    }
+    
     // Return the response data directly if it's available
     if (data) {
       return data;
@@ -125,6 +150,27 @@ export async function checkDomainStatus(domain: string): Promise<DomainVerificat
     
     // Add debug logging
     console.log('Check domain status response:', data);
+    
+    // If status check didn't return DNS records but we have a status, try the verify endpoint
+    if (data && data.success && data.status && (!data.dnsRecords || data.dnsRecords.length === 0)) {
+      console.log('Status check successful but no DNS records, trying verification endpoint...');
+      
+      // Try to get DNS records through verify endpoint
+      try {
+        const verifyResponse = await verifyDomain(domain);
+        
+        if (verifyResponse.success && verifyResponse.dnsRecords && verifyResponse.dnsRecords.length > 0) {
+          console.log('Retrieved DNS records from verify endpoint:', verifyResponse.dnsRecords);
+          return {
+            ...data,
+            dnsRecords: verifyResponse.dnsRecords
+          };
+        }
+      } catch (verifyError) {
+        console.error('Error getting DNS records from verify endpoint:', verifyError);
+        // Continue with original response if verification fails
+      }
+    }
     
     // Return the response data directly if it's available
     if (data) {

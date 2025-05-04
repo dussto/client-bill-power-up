@@ -51,9 +51,8 @@ const handler = async (req: Request): Promise<Response> => {
           }
           
           // Introduce a longer delay to allow Resend to process the domain creation
-          // This helps ensure DNS records are available when we query for them
           console.log("Waiting for domain to be processed...");
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          await new Promise(resolve => setTimeout(resolve, 5000));
           
           // Get the DNS records for verification immediately after adding
           try {
@@ -113,7 +112,7 @@ const handler = async (req: Request): Promise<Response> => {
           try {
             console.log("Making one final attempt to get DNS records");
             // Force a hard refresh of DNS records
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 2000));
             
             // Try verify once more
             const finalVerifyResponse = await resend.domains.verify(domain);
@@ -164,6 +163,30 @@ const handler = async (req: Request): Promise<Response> => {
         try {
           console.log(`Checking status for domain: ${domain}`);
           
+          // First try to get records from the verify endpoint
+          console.log("Attempting to get records from verify endpoint");
+          try {
+            const verifyResponse = await resend.domains.verify(domain);
+            console.log("Verification response:", JSON.stringify(verifyResponse));
+            
+            if (verifyResponse?.data?.records && verifyResponse.data.records.length > 0) {
+              return new Response(JSON.stringify({
+                success: true,
+                message: `Domain status: ${verifyResponse.data.status || 'pending'}`,
+                status: verifyResponse.data.status || 'pending',
+                dnsRecords: verifyResponse.data.records,
+              }), {
+                status: 200,
+                headers: { "Content-Type": "application/json", ...corsHeaders },
+              });
+            }
+          } catch (verifyError) {
+            console.error("Error from verify endpoint:", verifyError);
+            // Continue with the next approach if this fails
+          }
+          
+          // Next, try to get domain details by ID
+          console.log("Attempting to get domain details by ID");
           // First, get the domain ID from the list
           const listResponse = await resend.domains.list();
           console.log("Domains list response:", JSON.stringify(listResponse));
@@ -186,30 +209,46 @@ const handler = async (req: Request): Promise<Response> => {
           
           // Get DNS records if the domain exists
           let dnsRecords = [];
-          let status = 'pending';
+          let status = domainResponse?.data?.status || 'pending';
           
-          if (domainResponse?.data) {
-            status = domainResponse.data.status || 'pending';
+          // If records are available in the domain details
+          if (domainResponse?.data?.records && domainResponse.data.records.length > 0) {
+            dnsRecords = domainResponse.data.records;
             
-            // If records are available in the domain details
-            if (domainResponse.data.records && domainResponse.data.records.length > 0) {
-              dnsRecords = domainResponse.data.records;
-            } else {
-              // Try to get DNS records from verify endpoint
-              try {
-                const verifyResponse = await resend.domains.verify(domain);
-                console.log("Verification response:", JSON.stringify(verifyResponse));
-                
-                if (verifyResponse?.data?.records && verifyResponse.data.records.length > 0) {
-                  dnsRecords = verifyResponse.data.records;
-                }
-              } catch (verifyError) {
-                console.error("Error verifying domain:", verifyError);
-                // Continue even if verification fails
-              }
-            }
+            return new Response(JSON.stringify({
+              success: true,
+              message: `Domain status: ${status}`,
+              status: status,
+              dnsRecords: dnsRecords,
+            }), {
+              status: 200,
+              headers: { "Content-Type": "application/json", ...corsHeaders },
+            });
           }
           
+          // If we still don't have records, try one more time with a slight delay
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          try {
+            const finalVerifyResponse = await resend.domains.verify(domain);
+            console.log("Final verify attempt response:", JSON.stringify(finalVerifyResponse));
+            
+            if (finalVerifyResponse?.data?.records && finalVerifyResponse.data.records.length > 0) {
+              return new Response(JSON.stringify({
+                success: true,
+                message: `Domain status: ${finalVerifyResponse.data.status || status}`,
+                status: finalVerifyResponse.data.status || status,
+                dnsRecords: finalVerifyResponse.data.records,
+              }), {
+                status: 200,
+                headers: { "Content-Type": "application/json", ...corsHeaders },
+              });
+            }
+          } catch (finalVerifyError) {
+            console.error("Final verify attempt failed:", finalVerifyError);
+          }
+          
+          // If we still don't have records, return what we have
           return new Response(JSON.stringify({
             success: true,
             message: `Domain status: ${status}`,
@@ -239,7 +278,25 @@ const handler = async (req: Request): Promise<Response> => {
         try {
           console.log(`Manually verifying domain: ${domain}`);
           
-          // First, get the domain ID from the list
+          // Directly try to verify the domain first
+          const verifyResponse = await resend.domains.verify(domain);
+          console.log("Manual verification response:", JSON.stringify(verifyResponse));
+          
+          // Check if we got DNS records from the verify call
+          if (verifyResponse?.data?.records && verifyResponse.data.records.length > 0) {
+            const status = verifyResponse.data.status || 'pending';
+            return new Response(JSON.stringify({
+              success: true,
+              message: `Domain verification attempted. Current status: ${status}`,
+              status: status,
+              dnsRecords: verifyResponse.data.records,
+            }), {
+              status: 200,
+              headers: { "Content-Type": "application/json", ...corsHeaders },
+            });
+          }
+          
+          // If we didn't get records from verify, get domain details
           const listResponse = await resend.domains.list();
           console.log("Domains list for verification:", JSON.stringify(listResponse));
           
@@ -255,24 +312,15 @@ const handler = async (req: Request): Promise<Response> => {
             });
           }
           
-          // Manually request domain verification
-          const verifyResponse = await resend.domains.verify(domain);
-          console.log("Manual verification response:", JSON.stringify(verifyResponse));
-          
           // Check the domain status after verification attempt
           const domainResponse = await resend.domains.get(domainData.id);
           console.log("Domain status after verification:", JSON.stringify(domainResponse));
           
-          let status = 'pending';
-          if (domainResponse?.data) {
-            status = domainResponse.data.status || 'pending';
-          }
+          let status = domainResponse?.data?.status || 'pending';
           
           // Return DNS records if available
           let dnsRecords = [];
-          if (verifyResponse?.data?.records && verifyResponse.data.records.length > 0) {
-            dnsRecords = verifyResponse.data.records;
-          } else if (domainResponse?.data?.records && domainResponse.data.records.length > 0) {
+          if (domainResponse?.data?.records && domainResponse.data.records.length > 0) {
             dnsRecords = domainResponse.data.records;
           }
           

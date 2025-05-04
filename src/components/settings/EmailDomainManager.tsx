@@ -14,6 +14,7 @@ import {
   verifyDomain,
   DnsRecord 
 } from '@/utils/emailDomains';
+import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -51,11 +52,13 @@ export default function EmailDomainManager() {
       // Check status for each domain
       for (const domainName of userDomains) {
         const response = await checkDomainStatus(domainName);
-        if (response.success && response.status) {
-          setVerificationStatus(prev => ({
-            ...prev,
-            [domainName]: response.status
-          }));
+        if (response.success) {
+          if (response.status) {
+            setVerificationStatus(prev => ({
+              ...prev,
+              [domainName]: response.status
+            }));
+          }
           
           // Store DNS records for each domain
           if (response.dnsRecords && response.dnsRecords.length > 0) {
@@ -63,6 +66,17 @@ export default function EmailDomainManager() {
               ...prev,
               [domainName]: response.dnsRecords || []
             }));
+          } else {
+            // If no DNS records were found, try to verify the domain to get them
+            console.log(`No DNS records found for ${domainName}, trying verification endpoint`);
+            const verifyResponse = await verifyDomain(domainName);
+            
+            if (verifyResponse.success && verifyResponse.dnsRecords && verifyResponse.dnsRecords.length > 0) {
+              setDnsRecords(prev => ({
+                ...prev,
+                [domainName]: verifyResponse.dnsRecords || []
+              }));
+            }
           }
         }
       }
@@ -103,13 +117,15 @@ export default function EmailDomainManager() {
             : response.message,
         });
         
+        // Always add the domain to the list regardless of DNS records
+        setDomains(prev => [...prev, domain]);
+        
         // If the API returned DNS records, show them immediately
         if (response.dnsRecords && response.dnsRecords.length > 0) {
           setDnsRecords(prev => ({
             ...prev,
             [domain]: response.dnsRecords || []
           }));
-          setCurrentDomain(domain);
           
           if (response.status) {
             setVerificationStatus(prev => ({
@@ -117,44 +133,16 @@ export default function EmailDomainManager() {
               [domain]: response.status
             }));
           }
+          
+          // Show DNS records for the newly added domain
+          setCurrentDomain(domain);
         } else {
           // If no DNS records were returned, try to check status immediately
-          const statusResponse = await checkDomainStatus(domain);
-          
-          if (statusResponse.success && statusResponse.dnsRecords && statusResponse.dnsRecords.length > 0) {
-            setDnsRecords(prev => ({
-              ...prev,
-              [domain]: statusResponse.dnsRecords
-            }));
-            setCurrentDomain(domain);
-            
-            if (statusResponse.status) {
-              setVerificationStatus(prev => ({
-                ...prev,
-                [domain]: statusResponse.status
-              }));
-            }
-            
-            // Update toast message to indicate DNS records are now available
-            toast({
-              title: "DNS Records Retrieved",
-              description: "DNS records are now available below. Add these to your domain provider to verify ownership.",
-            });
-          } else {
-            // If still no DNS records, set a message
-            toast({
-              title: "DNS Records Not Available",
-              description: "Could not retrieve DNS records immediately. Please check domain status in a few moments.",
-              variant: "destructive",
-            });
-          }
+          handleCheckStatus(domain);
         }
         
         // Reset domain input
         setDomain('');
-        
-        // Refresh domains list
-        await fetchUserDomains();
       } else {
         toast({
           title: "Error adding domain",
@@ -178,7 +166,18 @@ export default function EmailDomainManager() {
     setIsChecking(prev => ({ ...prev, [domainToCheck]: true }));
     
     try {
-      const response = await checkDomainStatus(domainToCheck);
+      // First try a simple status check
+      let response = await checkDomainStatus(domainToCheck);
+      
+      // If status check didn't return DNS records, try verification endpoint
+      if (response.success && (!response.dnsRecords || response.dnsRecords.length === 0)) {
+        console.log(`No DNS records from status check for ${domainToCheck}, trying verification endpoint`);
+        const verifyResponse = await verifyDomain(domainToCheck);
+        
+        if (verifyResponse.success && verifyResponse.dnsRecords && verifyResponse.dnsRecords.length > 0) {
+          response = verifyResponse;
+        }
+      }
       
       if (response.success) {
         if (response.status) {
@@ -200,6 +199,30 @@ export default function EmailDomainManager() {
             description: "DNS records loaded below. Please add these records to your domain provider.",
           });
         } else {
+          // If we still don't have DNS records, make one more direct attempt
+          try {
+            console.log("Making direct call to verify endpoint as a last resort");
+            const lastAttemptResponse = await supabase.functions.invoke('manage-email-domains', {
+              body: { action: 'verify', domain: domainToCheck }
+            });
+            
+            if (lastAttemptResponse.data?.dnsRecords && lastAttemptResponse.data.dnsRecords.length > 0) {
+              setDnsRecords(prev => ({
+                ...prev,
+                [domainToCheck]: lastAttemptResponse.data.dnsRecords || []
+              }));
+              setCurrentDomain(domainToCheck);
+              
+              toast({
+                title: `Domain status: ${response.status || 'pending'}`,
+                description: "DNS records retrieved successfully.",
+              });
+              return;
+            }
+          } catch (lastAttemptError) {
+            console.error("Last resort attempt failed:", lastAttemptError);
+          }
+          
           toast({
             title: `Domain status: ${response.status || 'pending'}`,
             description: "No DNS records were returned. Please try again later.",
@@ -228,6 +251,7 @@ export default function EmailDomainManager() {
     setIsVerifying(prev => ({ ...prev, [domainToVerify]: true }));
     
     try {
+      // Call the verify domain function
       const response = await verifyDomain(domainToVerify);
       
       if (response.success) {
@@ -243,15 +267,35 @@ export default function EmailDomainManager() {
             ...prev,
             [domainToVerify]: response.dnsRecords || []
           }));
+          setCurrentDomain(domainToVerify);
+          
+          toast({
+            title: `Domain verification ${response.status === 'verified' ? 'successful' : 'in progress'}`,
+            description: "DNS records loaded successfully.",
+          });
+        } else {
+          // If verify didn't return DNS records, try status check
+          const statusResponse = await checkDomainStatus(domainToVerify);
+          
+          if (statusResponse.success && statusResponse.dnsRecords && statusResponse.dnsRecords.length > 0) {
+            setDnsRecords(prev => ({
+              ...prev,
+              [domainToVerify]: statusResponse.dnsRecords || []
+            }));
+            setCurrentDomain(domainToVerify);
+            
+            toast({
+              title: `Domain verification ${statusResponse.status === 'verified' ? 'successful' : 'in progress'}`,
+              description: "DNS records retrieved from status check.",
+            });
+          } else {
+            toast({
+              title: `Domain verification attempted`,
+              description: response.message || "No DNS records were returned. Please try again later.",
+              variant: "default",
+            });
+          }
         }
-        
-        setCurrentDomain(domainToVerify);
-        
-        toast({
-          title: `Domain verification ${response.status === 'verified' ? 'successful' : 'in progress'}`,
-          description: response.message,
-          variant: response.status === 'verified' ? 'default' : 'default',
-        });
       } else {
         toast({
           title: "Error verifying domain",
@@ -337,6 +381,11 @@ export default function EmailDomainManager() {
 
   const showDnsRecords = (domainName: string) => {
     setCurrentDomain(domainName);
+    
+    // If we don't have DNS records for this domain yet, try to load them
+    if (!dnsRecords[domainName] || dnsRecords[domainName].length === 0) {
+      handleCheckStatus(domainName);
+    }
   };
 
   return (
