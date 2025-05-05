@@ -1,6 +1,6 @@
 
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { useData } from '@/context/DataContext';
 import { Button } from '@/components/ui/button';
@@ -15,9 +15,13 @@ import {
   Check,
   AlertTriangle,
   Loader2,
+  Download,
+  Copy,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 export default function InvoiceDetailPage() {
   const { invoiceId } = useParams<{ invoiceId: string }>();
@@ -26,9 +30,11 @@ export default function InvoiceDetailPage() {
   const { toast } = useToast();
   
   const [isLoading, setIsLoading] = useState(false);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const invoice = getInvoice(invoiceId || '');
   const [client, setClient] = useState(null);
   const currentUser = getUser();
+  const invoiceRef = useRef(null);
   
   useEffect(() => {
     if (!invoice) {
@@ -141,6 +147,49 @@ export default function InvoiceDetailPage() {
       setIsLoading(false);
     }
   };
+  
+  const handleDownloadPDF = async () => {
+    if (!invoiceRef.current) return;
+    
+    setIsGeneratingPDF(true);
+    
+    try {
+      const invoiceElement = invoiceRef.current;
+      const canvas = await html2canvas(invoiceElement, {
+        scale: 2,
+        logging: false,
+        useCORS: true
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+      
+      // Calculate dimensions to fit the page while maintaining aspect ratio
+      const imgWidth = 210; // A4 width in mm (portrait)
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+      pdf.save(`Invoice-${invoice.invoiceNumber}.pdf`);
+      
+      toast({
+        title: "PDF Downloaded",
+        description: `Invoice #${invoice.invoiceNumber} has been downloaded as PDF.`,
+      });
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      toast({
+        title: "Error generating PDF",
+        description: "An error occurred while generating the PDF. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -164,6 +213,14 @@ export default function InvoiceDetailPage() {
           </div>
           
           <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={handleDownloadPDF} disabled={isGeneratingPDF}>
+              {isGeneratingPDF ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              {isGeneratingPDF ? "Generating..." : "Download PDF"}
+            </Button>
             <Button variant="outline" asChild>
               <Link to={`/invoices/${invoice.id}/edit`}>
                 <Edit className="h-4 w-4 mr-2" />
@@ -179,7 +236,7 @@ export default function InvoiceDetailPage() {
         
         <div className="grid gap-6 md:grid-cols-3">
           <Card className="md:col-span-2">
-            <CardContent className="p-6">
+            <CardContent className="p-6" ref={invoiceRef}>
               <div className="space-y-6">
                 {/* Invoice Header */}
                 <div className="flex justify-between">
@@ -193,8 +250,17 @@ export default function InvoiceDetailPage() {
                   </div>
                 </div>
                 
-                {/* Client & Dates */}
+                {/* From and To Information */}
                 <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">From:</p>
+                    <p className="font-medium">{currentUser?.fullName}</p>
+                    {currentUser?.company && <p>{currentUser.company}</p>}
+                    {currentUser?.address && <p>{currentUser.address}</p>}
+                    {currentUser?.email && <p>{currentUser.email}</p>}
+                    {currentUser?.phone && <p>{currentUser.phone}</p>}
+                  </div>
+                  
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Bill To:</p>
                     <p className="font-medium">{client.fullName}</p>
@@ -209,23 +275,31 @@ export default function InvoiceDetailPage() {
                     <p>{client.email}</p>
                     {client.phone && <p>{client.phone}</p>}
                   </div>
+                </div>
+                
+                {/* Invoice Details */}
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-1">
+                    <div className="grid grid-cols-2">
+                      <p className="text-sm text-muted-foreground">Invoice Number:</p>
+                      <p>#{invoice.invoiceNumber}</p>
+                    </div>
+                    <div className="grid grid-cols-2">
+                      <p className="text-sm text-muted-foreground">Invoice Date:</p>
+                      <p>{formatDate(invoice.issueDate)}</p>
+                    </div>
+                    <div className="grid grid-cols-2">
+                      <p className="text-sm text-muted-foreground">Due Date:</p>
+                      <p>{formatDate(invoice.dueDate)}</p>
+                    </div>
+                  </div>
                   
-                  <div>
-                    <div className="space-y-1">
-                      <div className="grid grid-cols-2">
-                        <p className="text-sm text-muted-foreground">Invoice Date:</p>
-                        <p>{formatDate(invoice.issueDate)}</p>
-                      </div>
-                      <div className="grid grid-cols-2">
-                        <p className="text-sm text-muted-foreground">Due Date:</p>
-                        <p>{formatDate(invoice.dueDate)}</p>
-                      </div>
-                      <div className="grid grid-cols-2">
-                        <p className="text-sm text-muted-foreground">Status:</p>
-                        <div className="flex items-center gap-1">
-                          {getStatusIcon(invoice.status)}
-                          <span className="capitalize">{invoice.status}</span>
-                        </div>
+                  <div className="space-y-1">
+                    <div className="grid grid-cols-2">
+                      <p className="text-sm text-muted-foreground">Status:</p>
+                      <div className="flex items-center gap-1">
+                        {getStatusIcon(invoice.status)}
+                        <span className="capitalize">{invoice.status}</span>
                       </div>
                     </div>
                   </div>
@@ -310,6 +384,15 @@ export default function InvoiceDetailPage() {
                 <h3 className="text-lg font-medium">Actions</h3>
                 
                 <div className="space-y-3">
+                  <Button onClick={handleDownloadPDF} className="w-full" disabled={isGeneratingPDF}>
+                    {isGeneratingPDF ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4 mr-2" />
+                    )}
+                    {isGeneratingPDF ? "Generating PDF..." : "Download Invoice PDF"}
+                  </Button>
+                
                   {invoice.status !== 'paid' && (
                     <Button onClick={handleMarkAsPaid} className="w-full">
                       <Check className="h-4 w-4 mr-2" />

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { useData } from '@/context/DataContext';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Send, Loader2, AlertTriangle, Info } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, AlertTriangle, Info, Copy } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -131,7 +131,7 @@ export default function SendInvoicePage() {
         message: `Dear ${client.fullName},\n\nPlease find attached invoice #${invoice.invoiceNumber} for $${invoice.total.toFixed(2)}.\n\nPayment is due by ${formattedDate}.\n\nThank you for your business.\n\nSincerely,\n${currentUser?.fullName || 'Your Name'}\n${currentUser?.company || 'Your Company'}`,
         copy: true,
         markAsSent: true,
-        fromDomain: '',
+        fromDomain: prev.fromDomain || '',
         fromName: currentUser?.company || 'Your Company',
       }));
       
@@ -291,7 +291,7 @@ export default function SendInvoicePage() {
                           <SelectValue placeholder="Select a verified domain" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Use test email address</SelectItem>
+                          <SelectItem value="test">Use test email address</SelectItem>
                           {verifiedDomains.map(domain => (
                             <SelectItem key={domain} value={domain}>{domain}</SelectItem>
                           ))}
@@ -299,7 +299,7 @@ export default function SendInvoicePage() {
                       </Select>
                     </div>
                     
-                    {emailData.fromDomain && (
+                    {emailData.fromDomain && emailData.fromDomain !== "test" && (
                       <div className="grid gap-2">
                         <Label htmlFor="fromName">From Name</Label>
                         <Input
@@ -394,7 +394,7 @@ export default function SendInvoicePage() {
                   ) : (
                     <>
                       <Send className="h-4 w-4 mr-2" />
-                      {emailData.fromDomain ? 'Send Invoice' : 'Send Test Email'}
+                      {emailData.fromDomain && emailData.fromDomain !== "test" ? 'Send Invoice' : 'Send Test Email'}
                     </>
                   )}
                 </Button>
