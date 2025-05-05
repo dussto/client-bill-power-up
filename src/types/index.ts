@@ -4,6 +4,8 @@ export type User = {
   email: string;
   fullName: string;
   company?: string;
+  address?: string;
+  phone?: string;
 }
 
 export type Client = {
