@@ -1,4 +1,3 @@
-
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,15 +6,18 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/ui/use-toast';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import EmailDomainManager from '@/components/settings/EmailDomainManager';
 import { Checkbox } from '@/components/ui/checkbox';
+import { useData } from '@/context/DataContext';
+import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/integrations/supabase/client';
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
   const { toast } = useToast();
+  const { invoiceSettings, updateInvoiceSettings } = useData();
   
   const [profileForm, setProfileForm] = useState({
     fullName: user?.fullName || '',
@@ -29,17 +31,13 @@ export default function SettingsPage() {
     confirmPassword: '',
   });
 
-  const [invoiceSettings, setInvoiceSettings] = useState({
-    fullName: user?.fullName || '',
-    email: user?.email || '',
-    phone: '',
-    address: '',
-    isCompany: false,
-    companyName: user?.company || '',
-    logo: '',
-    invoicePrefix: 'INV',
-    invoiceNumberingScheme: 'year-number', // or 'random'
-  });
+  // Initialize form with values from context
+  const [localInvoiceSettings, setLocalInvoiceSettings] = useState(invoiceSettings);
+
+  // Update local form when context changes
+  useEffect(() => {
+    setLocalInvoiceSettings(invoiceSettings);
+  }, [invoiceSettings]);
 
   const handleProfileChange = (e) => {
     const { name, value } = e.target;
@@ -59,15 +57,15 @@ export default function SettingsPage() {
 
   const handleInvoiceSettingsChange = (e) => {
     const { name, value } = e.target;
-    setInvoiceSettings({
-      ...invoiceSettings,
+    setLocalInvoiceSettings({
+      ...localInvoiceSettings,
       [name]: value,
     });
   };
 
   const handleCheckboxChange = (checked) => {
-    setInvoiceSettings({
-      ...invoiceSettings,
+    setLocalInvoiceSettings({
+      ...localInvoiceSettings,
       isCompany: checked,
     });
   };
@@ -83,7 +81,8 @@ export default function SettingsPage() {
 
   const handleInvoiceSettingsSubmit = (e) => {
     e.preventDefault();
-    // In a real app, this would save the invoice settings
+    // Update the invoice settings in the context
+    updateInvoiceSettings(localInvoiceSettings);
     toast({
       title: "Invoice settings updated",
       description: "Your invoice settings have been updated successfully.",
@@ -118,13 +117,27 @@ export default function SettingsPage() {
     try {
       toast({
         title: "Connecting to Stripe",
-        description: "Redirecting to Stripe Connect...",
+        description: "Initiating Stripe Connect integration...",
       });
       
-      // In a real implementation, you would call a Supabase function to generate a Stripe Connect URL
-      // For now, we'll redirect to the Stripe documentation
-      window.open('https://stripe.com/docs/connect/standard-accounts', '_blank');
+      // In a real implementation, you would call a Supabase function to initiate Stripe Connect
+      const { data, error } = await supabase.functions.invoke('connect-stripe', {
+        body: { userId: user?.id },
+      });
+      
+      if (error) {
+        throw new Error(`Error connecting to Stripe: ${error.message}`);
+      }
+      
+      if (data && data.url) {
+        // Redirect to the Stripe Connect onboarding URL
+        window.location.href = data.url;
+      } else {
+        // Fallback to documentation for now
+        window.open('https://stripe.com/docs/connect/standard-accounts', '_blank');
+      }
     } catch (error) {
+      console.error("Stripe connection error:", error);
       toast({
         title: "Stripe Connection Failed",
         description: "There was an error connecting to Stripe. Please try again.",
@@ -267,7 +280,7 @@ export default function SettingsPage() {
                     <Input
                       id="fullName"
                       name="fullName"
-                      value={invoiceSettings.fullName}
+                      value={localInvoiceSettings.fullName}
                       onChange={handleInvoiceSettingsChange}
                     />
                   </div>
@@ -278,7 +291,7 @@ export default function SettingsPage() {
                       id="email"
                       name="email"
                       type="email"
-                      value={invoiceSettings.email}
+                      value={localInvoiceSettings.email}
                       onChange={handleInvoiceSettingsChange}
                     />
                   </div>
@@ -289,7 +302,7 @@ export default function SettingsPage() {
                       id="phone"
                       name="phone"
                       type="tel"
-                      value={invoiceSettings.phone}
+                      value={localInvoiceSettings.phone}
                       onChange={handleInvoiceSettingsChange}
                     />
                   </div>
@@ -299,7 +312,7 @@ export default function SettingsPage() {
                     <Input
                       id="address"
                       name="address"
-                      value={invoiceSettings.address}
+                      value={localInvoiceSettings.address}
                       onChange={handleInvoiceSettingsChange}
                     />
                   </div>
@@ -307,19 +320,19 @@ export default function SettingsPage() {
                   <div className="flex items-center space-x-2 pb-2">
                     <Checkbox 
                       id="isCompany" 
-                      checked={invoiceSettings.isCompany}
+                      checked={localInvoiceSettings.isCompany}
                       onCheckedChange={handleCheckboxChange}
                     />
                     <Label htmlFor="isCompany">This is a company</Label>
                   </div>
                   
-                  {invoiceSettings.isCompany && (
+                  {localInvoiceSettings.isCompany && (
                     <div className="grid gap-2">
                       <Label htmlFor="companyName">Company Name</Label>
                       <Input
                         id="companyName"
                         name="companyName"
-                        value={invoiceSettings.companyName}
+                        value={localInvoiceSettings.companyName}
                         onChange={handleInvoiceSettingsChange}
                       />
                     </div>
@@ -331,7 +344,7 @@ export default function SettingsPage() {
                       id="logo"
                       name="logo"
                       placeholder="https://your-logo-url.com/logo.png"
-                      value={invoiceSettings.logo}
+                      value={localInvoiceSettings.logo}
                       onChange={handleInvoiceSettingsChange}
                     />
                   </div>
@@ -347,7 +360,7 @@ export default function SettingsPage() {
                         id="invoicePrefix"
                         name="invoicePrefix"
                         maxLength={3}
-                        value={invoiceSettings.invoicePrefix}
+                        value={localInvoiceSettings.invoicePrefix}
                         onChange={handleInvoiceSettingsChange}
                       />
                       <p className="text-sm text-muted-foreground">
@@ -364,7 +377,7 @@ export default function SettingsPage() {
                             id="yearNumber" 
                             name="invoiceNumberingScheme" 
                             value="year-number"
-                            checked={invoiceSettings.invoiceNumberingScheme === 'year-number'}
+                            checked={localInvoiceSettings.invoiceNumberingScheme === 'year-number'}
                             onChange={handleInvoiceSettingsChange} 
                           />
                           <Label htmlFor="yearNumber">Year-Number (e.g., INV-2025-001)</Label>
@@ -376,7 +389,7 @@ export default function SettingsPage() {
                             id="random" 
                             name="invoiceNumberingScheme" 
                             value="random"
-                            checked={invoiceSettings.invoiceNumberingScheme === 'random'}
+                            checked={localInvoiceSettings.invoiceNumberingScheme === 'random'}
                             onChange={handleInvoiceSettingsChange} 
                           />
                           <Label htmlFor="random">Random (e.g., INV-A7B3C2)</Label>

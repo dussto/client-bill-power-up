@@ -9,13 +9,21 @@ export const generatePDF = async (
   if (!element) return;
   
   try {
+    // Improved PDF generation with higher quality settings
     const canvas = await html2canvas(element, {
-      scale: 2,
+      scale: 3, // Increase scale for better resolution
       logging: false,
-      useCORS: true
+      useCORS: true,
+      allowTaint: true,
+      // Improved text rendering
+      letterRendering: true,
+      // Better font rendering
+      fontDisplay: 'swap'
     });
     
-    const imgData = canvas.toDataURL('image/png');
+    const imgData = canvas.toDataURL('image/png', 1.0); // Use highest quality
+    
+    // Use a4 format for better compatibility
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
@@ -26,7 +34,8 @@ export const generatePDF = async (
     const imgWidth = 210; // A4 width in mm (portrait)
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
     
-    pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+    // Add image to PDF with better quality settings
+    pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight, undefined, 'FAST');
     pdf.save(filename);
     
     return;

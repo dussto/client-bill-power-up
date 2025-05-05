@@ -2,16 +2,29 @@
 import { createContext, useState, useContext, useEffect, ReactNode } from 'react';
 import { Client, Invoice, User } from '@/types';
 import { useAuth } from './AuthContext';
-import { DataContextProps } from './DataContextTypes';
+import { DataContextProps, InvoiceSettings } from './DataContextTypes';
 import { createClientOperations } from './clientOperations';
 import { createInvoiceOperations } from './invoiceOperations';
 import { generateMockClients, generateMockInvoices } from '@/utils/mockDataGenerator';
 
 const DataContext = createContext<DataContextProps | undefined>(undefined);
 
+const defaultInvoiceSettings: InvoiceSettings = {
+  fullName: '',
+  email: '',
+  phone: '',
+  address: '',
+  isCompany: false,
+  companyName: '',
+  logo: '',
+  invoicePrefix: 'INV',
+  invoiceNumberingScheme: 'year-number',
+};
+
 export const DataProvider = ({ children }: { children: ReactNode }) => {
   const [clients, setClients] = useState<Client[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [invoiceSettings, setInvoiceSettings] = useState<InvoiceSettings>(defaultInvoiceSettings);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -19,6 +32,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     if (user) {
       const savedClients = localStorage.getItem(`invoice_app_clients_${user.id}`);
       const savedInvoices = localStorage.getItem(`invoice_app_invoices_${user.id}`);
+      const savedInvoiceSettings = localStorage.getItem(`invoice_app_settings_${user.id}`);
       
       if (savedClients) {
         setClients(JSON.parse(savedClients));
@@ -35,10 +49,24 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         setInvoices(mockInvoices);
         localStorage.setItem(`invoice_app_invoices_${user.id}`, JSON.stringify(mockInvoices));
       }
+      
+      if (savedInvoiceSettings) {
+        setInvoiceSettings(JSON.parse(savedInvoiceSettings));
+      } else {
+        const initialSettings = {
+          ...defaultInvoiceSettings,
+          fullName: user?.fullName || '',
+          email: user?.email || '',
+          companyName: user?.company || '',
+        };
+        setInvoiceSettings(initialSettings);
+        localStorage.setItem(`invoice_app_settings_${user.id}`, JSON.stringify(initialSettings));
+      }
     } else {
       // Clear data when logged out
       setClients([]);
       setInvoices([]);
+      setInvoiceSettings(defaultInvoiceSettings);
     }
   }, [user]);
 
@@ -47,8 +75,9 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     if (user) {
       localStorage.setItem(`invoice_app_clients_${user.id}`, JSON.stringify(clients));
       localStorage.setItem(`invoice_app_invoices_${user.id}`, JSON.stringify(invoices));
+      localStorage.setItem(`invoice_app_settings_${user.id}`, JSON.stringify(invoiceSettings));
     }
-  }, [clients, invoices, user]);
+  }, [clients, invoices, invoiceSettings, user]);
 
   // Create operations
   const clientOps = createClientOperations(clients, setClients, invoices);
@@ -57,6 +86,11 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   // Get the current user
   const getUser = () => {
     return user;
+  };
+  
+  // Update invoice settings
+  const updateInvoiceSettings = (settings: Partial<InvoiceSettings>) => {
+    setInvoiceSettings(prev => ({ ...prev, ...settings }));
   };
 
   return (
@@ -67,6 +101,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         ...clientOps,
         ...invoiceOps,
         getUser,
+        invoiceSettings,
+        updateInvoiceSettings,
       }}
     >
       {children}

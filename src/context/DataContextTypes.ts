@@ -1,6 +1,18 @@
 
 import { Client, Invoice, User } from '@/types';
 
+export interface InvoiceSettings {
+  fullName: string;
+  email: string;
+  phone: string;
+  address: string;
+  isCompany: boolean;
+  companyName: string;
+  logo: string;
+  invoicePrefix: string;
+  invoiceNumberingScheme: string;
+}
+
 export interface DataContextProps {
   clients: Client[];
   invoices: Invoice[];
@@ -14,4 +26,6 @@ export interface DataContextProps {
   getInvoice: (id: string) => Invoice | undefined;
   getClientInvoices: (clientId: string) => Invoice[];
   getUser: () => User | null;
+  invoiceSettings: InvoiceSettings;
+  updateInvoiceSettings: (settings: Partial<InvoiceSettings>) => void;
 }
