@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
@@ -393,7 +392,7 @@ export default function EmailDomainManager() {
 
   // Get badge variant based on status
   const getBadgeVariant = (status: string | null) => {
-    if (status === 'verified') return 'success';
+    if (status === 'verified') return 'secondary'; // Changed from 'success' to 'secondary'
     if (status === 'pending') return 'outline';
     if (status === 'failed') return 'destructive';
     return 'secondary'; // For 'not_started' or null
