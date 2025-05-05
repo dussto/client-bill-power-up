@@ -1,27 +1,15 @@
 
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { useData } from '@/context/DataContext';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { format } from 'date-fns';
-import {
-  ArrowLeft,
-  Edit,
-  Send,
-  Clock,
-  Check,
-  AlertTriangle,
-  Loader2,
-  Download,
-  Copy,
-} from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
+import { format } from 'date-fns';
+import InvoiceHeader from '@/components/invoices/InvoiceHeader';
+import InvoiceContent from '@/components/invoices/InvoiceContent';
+import InvoiceActions from '@/components/invoices/InvoiceActions';
+import { generatePDF } from '@/utils/pdf-service';
 
 export default function InvoiceDetailPage() {
   const { invoiceId } = useParams<{ invoiceId: string }>();
@@ -49,44 +37,31 @@ export default function InvoiceDetailPage() {
     return null;
   }
 
-  const formatDate = (dateString: string) => {
+  const handleDownloadPDF = async () => {
+    if (!invoiceRef.current) return;
+    
+    setIsGeneratingPDF(true);
+    
     try {
-      return format(new Date(dateString), "MMM d, yyyy");
+      await generatePDF(
+        invoiceRef.current, 
+        `Invoice-${invoice.invoiceNumber}.pdf`
+      );
+      
+      toast({
+        title: "PDF Downloaded",
+        description: `Invoice #${invoice.invoiceNumber} has been downloaded as PDF.`,
+      });
     } catch (error) {
-      return dateString;
+      console.error("Error generating PDF:", error);
+      toast({
+        title: "Error generating PDF",
+        description: "An error occurred while generating the PDF. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingPDF(false);
     }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'paid':
-        return <Check className="h-5 w-5 text-green-600" />;
-      case 'pending':
-        return <Clock className="h-5 w-5 text-yellow-600" />;
-      case 'overdue':
-        return <AlertTriangle className="h-5 w-5 text-red-600" />;
-      default:
-        return null;
-    }
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'paid':
-        return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Paid</Badge>;
-      case 'pending':
-        return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">Pending</Badge>;
-      case 'overdue':
-        return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">Overdue</Badge>;
-      case 'draft':
-        return <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-100">Draft</Badge>;
-      default:
-        return <Badge>{status}</Badge>;
-    }
-  };
-
-  const handleSendInvoice = () => {
-    navigate(`/invoices/${invoice.id}/send`);
   };
 
   const handleMarkAsPaid = () => {
@@ -147,329 +122,36 @@ export default function InvoiceDetailPage() {
       setIsLoading(false);
     }
   };
-  
-  const handleDownloadPDF = async () => {
-    if (!invoiceRef.current) return;
-    
-    setIsGeneratingPDF(true);
-    
-    try {
-      const invoiceElement = invoiceRef.current;
-      const canvas = await html2canvas(invoiceElement, {
-        scale: 2,
-        logging: false,
-        useCORS: true
-      });
-      
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
-      });
-      
-      // Calculate dimensions to fit the page while maintaining aspect ratio
-      const imgWidth = 210; // A4 width in mm (portrait)
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      
-      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-      pdf.save(`Invoice-${invoice.invoiceNumber}.pdf`);
-      
-      toast({
-        title: "PDF Downloaded",
-        description: `Invoice #${invoice.invoiceNumber} has been downloaded as PDF.`,
-      });
-    } catch (error) {
-      console.error("Error generating PDF:", error);
-      toast({
-        title: "Error generating PDF",
-        description: "An error occurred while generating the PDF. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsGeneratingPDF(false);
-    }
-  };
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="outline" size="icon" onClick={() => navigate(-1)}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-3xl font-bold tracking-tight">
-                  Invoice #{invoice.invoiceNumber}
-                </h1>
-                {getStatusBadge(invoice.status)}
-              </div>
-              <p className="text-muted-foreground">
-                Issued on {formatDate(invoice.issueDate)} • Due on {formatDate(invoice.dueDate)}
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={handleDownloadPDF} disabled={isGeneratingPDF}>
-              {isGeneratingPDF ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4 mr-2" />
-              )}
-              {isGeneratingPDF ? "Generating..." : "Download PDF"}
-            </Button>
-            <Button variant="outline" asChild>
-              <Link to={`/invoices/${invoice.id}/edit`}>
-                <Edit className="h-4 w-4 mr-2" />
-                Edit
-              </Link>
-            </Button>
-            <Button onClick={handleSendInvoice}>
-              <Send className="h-4 w-4 mr-2" />
-              Send Invoice
-            </Button>
-          </div>
-        </div>
+        <InvoiceHeader 
+          invoice={invoice}
+          onDownloadPDF={handleDownloadPDF}
+          isGeneratingPDF={isGeneratingPDF}
+        />
         
         <div className="grid gap-6 md:grid-cols-3">
-          <Card className="md:col-span-2">
-            <CardContent className="p-6" ref={invoiceRef}>
-              <div className="space-y-6">
-                {/* Invoice Header */}
-                <div className="flex justify-between">
-                  <div>
-                    <h2 className="text-2xl font-bold">Invoice</h2>
-                    <p className="text-muted-foreground">#{invoice.invoiceNumber}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold">Total Amount</p>
-                    <p className="text-2xl font-bold">${invoice.total.toFixed(2)}</p>
-                  </div>
-                </div>
-                
-                {/* From and To Information */}
-                <div className="grid grid-cols-2 gap-6">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">From:</p>
-                    <p className="font-medium">{currentUser?.fullName}</p>
-                    {currentUser?.company && <p>{currentUser.company}</p>}
-                    {currentUser?.address && <p>{currentUser.address}</p>}
-                    {currentUser?.email && <p>{currentUser.email}</p>}
-                    {currentUser?.phone && <p>{currentUser.phone}</p>}
-                  </div>
-                  
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Bill To:</p>
-                    <p className="font-medium">{client.fullName}</p>
-                    {client.companyName && <p>{client.companyName}</p>}
-                    <p>{client.address}</p>
-                    {client.city && (
-                      <p>
-                        {client.city}, {client.state} {client.zipCode}
-                      </p>
-                    )}
-                    {client.country && <p>{client.country}</p>}
-                    <p>{client.email}</p>
-                    {client.phone && <p>{client.phone}</p>}
-                  </div>
-                </div>
-                
-                {/* Invoice Details */}
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-1">
-                    <div className="grid grid-cols-2">
-                      <p className="text-sm text-muted-foreground">Invoice Number:</p>
-                      <p>#{invoice.invoiceNumber}</p>
-                    </div>
-                    <div className="grid grid-cols-2">
-                      <p className="text-sm text-muted-foreground">Invoice Date:</p>
-                      <p>{formatDate(invoice.issueDate)}</p>
-                    </div>
-                    <div className="grid grid-cols-2">
-                      <p className="text-sm text-muted-foreground">Due Date:</p>
-                      <p>{formatDate(invoice.dueDate)}</p>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-1">
-                    <div className="grid grid-cols-2">
-                      <p className="text-sm text-muted-foreground">Status:</p>
-                      <div className="flex items-center gap-1">
-                        {getStatusIcon(invoice.status)}
-                        <span className="capitalize">{invoice.status}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Invoice Items */}
-                <div className="border rounded-md overflow-hidden">
-                  <table className="w-full">
-                    <thead className="bg-muted">
-                      <tr>
-                        <th className="px-4 py-2 text-left text-sm">Description</th>
-                        <th className="px-4 py-2 text-right text-sm w-24">Qty</th>
-                        <th className="px-4 py-2 text-right text-sm w-32">Rate</th>
-                        <th className="px-4 py-2 text-right text-sm w-32">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {invoice.items.map((item) => (
-                        <tr key={item.id} className="border-t">
-                          <td className="px-4 py-3">{item.description}</td>
-                          <td className="px-4 py-3 text-right">{item.quantity}</td>
-                          <td className="px-4 py-3 text-right">${item.rate.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-right">${item.amount.toFixed(2)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t">
-                        <td colSpan={3} className="px-4 py-3 text-right font-medium">
-                          Subtotal
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          ${invoice.subtotal.toFixed(2)}
-                        </td>
-                      </tr>
-                      {invoice.tax > 0 && (
-                        <tr>
-                          <td colSpan={3} className="px-4 py-3 text-right font-medium">
-                            Tax
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            ${invoice.tax.toFixed(2)}
-                          </td>
-                        </tr>
-                      )}
-                      {invoice.discount > 0 && (
-                        <tr>
-                          <td colSpan={3} className="px-4 py-3 text-right font-medium">
-                            Discount
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            -${invoice.discount.toFixed(2)}
-                          </td>
-                        </tr>
-                      )}
-                      <tr className="border-t">
-                        <td colSpan={3} className="px-4 py-3 text-right font-medium">
-                          Total
-                        </td>
-                        <td className="px-4 py-3 text-right font-bold">
-                          ${invoice.total.toFixed(2)}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-                
-                {/* Notes */}
-                {invoice.notes && (
-                  <div className="space-y-2">
-                    <p className="font-medium">Notes</p>
-                    <p className="text-muted-foreground">{invoice.notes}</p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-          
-          <div className="space-y-6">
-            <Card>
-              <CardContent className="p-6 space-y-4">
-                <h3 className="text-lg font-medium">Actions</h3>
-                
-                <div className="space-y-3">
-                  <Button onClick={handleDownloadPDF} className="w-full" disabled={isGeneratingPDF}>
-                    {isGeneratingPDF ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Download className="h-4 w-4 mr-2" />
-                    )}
-                    {isGeneratingPDF ? "Generating PDF..." : "Download Invoice PDF"}
-                  </Button>
-                
-                  {invoice.status !== 'paid' && (
-                    <Button onClick={handleMarkAsPaid} className="w-full">
-                      <Check className="h-4 w-4 mr-2" />
-                      Mark as Paid
-                    </Button>
-                  )}
-                  
-                  {invoice.status === 'paid' && (
-                    <Button onClick={handleMarkAsPending} className="w-full" variant="outline">
-                      <Clock className="h-4 w-4 mr-2" />
-                      Mark as Pending
-                    </Button>
-                  )}
-                  
-                  <Button onClick={handleSendInvoice} className="w-full" variant="outline">
-                    <Send className="h-4 w-4 mr-2" />
-                    Send Invoice
-                  </Button>
-                  
-                  {(invoice.status === 'pending' || invoice.status === 'overdue') && (
-                    <Button 
-                      onClick={handleSendReminder} 
-                      className="w-full" 
-                      variant="outline"
-                      disabled={isLoading}
-                    >
-                      {isLoading ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <AlertTriangle className="h-4 w-4 mr-2" />
-                      )}
-                      {isLoading ? "Sending..." : "Send Reminder"}
-                    </Button>
-                  )}
-                  
-                  <Button asChild className="w-full" variant="outline">
-                    <Link to={`/invoices/${invoice.id}/edit`}>
-                      <Edit className="h-4 w-4 mr-2" />
-                      Edit Invoice
-                    </Link>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="p-6">
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium">Client</h3>
-                  
-                  <div className="space-y-2">
-                    <p className="font-medium">{client.fullName}</p>
-                    {client.companyName && <p>{client.companyName}</p>}
-                    <a
-                      href={`mailto:${client.email}`}
-                      className="text-primary hover:underline"
-                    >
-                      {client.email}
-                    </a>
-                    {client.phone && (
-                      <p>
-                        <a href={`tel:${client.phone}`} className="hover:underline">
-                          {client.phone}
-                        </a>
-                      </p>
-                    )}
-                  </div>
-                  
-                  <Button asChild variant="outline" className="w-full">
-                    <Link to={`/clients/${client.id}`}>
-                      View Client Details
-                    </Link>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+          <div className="md:col-span-2">
+            <InvoiceContent 
+              ref={invoiceRef}
+              invoice={invoice}
+              client={client}
+              currentUser={currentUser}
+            />
           </div>
+          
+          <InvoiceActions 
+            invoice={invoice}
+            client={client}
+            onMarkAsPaid={handleMarkAsPaid}
+            onMarkAsPending={handleMarkAsPending}
+            onSendReminder={handleSendReminder}
+            onDownloadPDF={handleDownloadPDF}
+            isLoading={isLoading}
+            isGeneratingPDF={isGeneratingPDF}
+          />
         </div>
       </div>
     </DashboardLayout>
