@@ -10,6 +10,8 @@ import { useToast } from '@/components/ui/use-toast';
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import EmailDomainManager from '@/components/settings/EmailDomainManager';
+import { Checkbox } from '@/components/ui/checkbox';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
@@ -25,6 +27,18 @@ export default function SettingsPage() {
     currentPassword: '',
     newPassword: '',
     confirmPassword: '',
+  });
+
+  const [invoiceSettings, setInvoiceSettings] = useState({
+    fullName: user?.fullName || '',
+    email: user?.email || '',
+    phone: '',
+    address: '',
+    isCompany: false,
+    companyName: user?.company || '',
+    logo: '',
+    invoicePrefix: 'INV',
+    invoiceNumberingScheme: 'year-number', // or 'random'
   });
 
   const handleProfileChange = (e) => {
@@ -43,12 +57,36 @@ export default function SettingsPage() {
     });
   };
 
+  const handleInvoiceSettingsChange = (e) => {
+    const { name, value } = e.target;
+    setInvoiceSettings({
+      ...invoiceSettings,
+      [name]: value,
+    });
+  };
+
+  const handleCheckboxChange = (checked) => {
+    setInvoiceSettings({
+      ...invoiceSettings,
+      isCompany: checked,
+    });
+  };
+
   const handleProfileSubmit = (e) => {
     e.preventDefault();
     // In a real app, this would update the profile
     toast({
       title: "Profile updated",
       description: "Your profile has been updated successfully.",
+    });
+  };
+
+  const handleInvoiceSettingsSubmit = (e) => {
+    e.preventDefault();
+    // In a real app, this would save the invoice settings
+    toast({
+      title: "Invoice settings updated",
+      description: "Your invoice settings have been updated successfully.",
     });
   };
 
@@ -76,6 +114,25 @@ export default function SettingsPage() {
     });
   };
 
+  const connectStripe = async () => {
+    try {
+      toast({
+        title: "Connecting to Stripe",
+        description: "Redirecting to Stripe Connect...",
+      });
+      
+      // In a real implementation, you would call a Supabase function to generate a Stripe Connect URL
+      // For now, we'll redirect to the Stripe documentation
+      window.open('https://stripe.com/docs/connect/standard-accounts', '_blank');
+    } catch (error) {
+      toast({
+        title: "Stripe Connection Failed",
+        description: "There was an error connecting to Stripe. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -92,6 +149,8 @@ export default function SettingsPage() {
           <TabsList>
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="email">Email Domains</TabsTrigger>
+            <TabsTrigger value="invoice">Invoice Settings</TabsTrigger>
+            <TabsTrigger value="payment">Payment Settings</TabsTrigger>
             <TabsTrigger value="account">Account</TabsTrigger>
           </TabsList>
           
@@ -191,6 +250,198 @@ export default function SettingsPage() {
           
           <TabsContent value="email">
             <EmailDomainManager />
+          </TabsContent>
+          
+          <TabsContent value="invoice" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Invoice Settings</CardTitle>
+                <CardDescription>
+                  Configure your invoice details shown to clients
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleInvoiceSettingsSubmit} className="space-y-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="fullName">Full Name</Label>
+                    <Input
+                      id="fullName"
+                      name="fullName"
+                      value={invoiceSettings.fullName}
+                      onChange={handleInvoiceSettingsChange}
+                    />
+                  </div>
+                  
+                  <div className="grid gap-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      name="email"
+                      type="email"
+                      value={invoiceSettings.email}
+                      onChange={handleInvoiceSettingsChange}
+                    />
+                  </div>
+                  
+                  <div className="grid gap-2">
+                    <Label htmlFor="phone">Phone</Label>
+                    <Input
+                      id="phone"
+                      name="phone"
+                      type="tel"
+                      value={invoiceSettings.phone}
+                      onChange={handleInvoiceSettingsChange}
+                    />
+                  </div>
+                  
+                  <div className="grid gap-2">
+                    <Label htmlFor="address">Address</Label>
+                    <Input
+                      id="address"
+                      name="address"
+                      value={invoiceSettings.address}
+                      onChange={handleInvoiceSettingsChange}
+                    />
+                  </div>
+                  
+                  <div className="flex items-center space-x-2 pb-2">
+                    <Checkbox 
+                      id="isCompany" 
+                      checked={invoiceSettings.isCompany}
+                      onCheckedChange={handleCheckboxChange}
+                    />
+                    <Label htmlFor="isCompany">This is a company</Label>
+                  </div>
+                  
+                  {invoiceSettings.isCompany && (
+                    <div className="grid gap-2">
+                      <Label htmlFor="companyName">Company Name</Label>
+                      <Input
+                        id="companyName"
+                        name="companyName"
+                        value={invoiceSettings.companyName}
+                        onChange={handleInvoiceSettingsChange}
+                      />
+                    </div>
+                  )}
+                  
+                  <div className="grid gap-2">
+                    <Label htmlFor="logo">Logo URL</Label>
+                    <Input
+                      id="logo"
+                      name="logo"
+                      placeholder="https://your-logo-url.com/logo.png"
+                      value={invoiceSettings.logo}
+                      onChange={handleInvoiceSettingsChange}
+                    />
+                  </div>
+                  
+                  <Separator className="my-4" />
+                  
+                  <div className="space-y-4">
+                    <h4 className="font-medium">Invoice Numbering</h4>
+                    
+                    <div className="grid gap-2">
+                      <Label htmlFor="invoicePrefix">Invoice Prefix (3 characters)</Label>
+                      <Input
+                        id="invoicePrefix"
+                        name="invoicePrefix"
+                        maxLength={3}
+                        value={invoiceSettings.invoicePrefix}
+                        onChange={handleInvoiceSettingsChange}
+                      />
+                      <p className="text-sm text-muted-foreground">
+                        The prefix will be added before the invoice number (e.g., INV-2025-001)
+                      </p>
+                    </div>
+                    
+                    <div className="grid gap-2">
+                      <Label>Numbering Scheme</Label>
+                      <div className="flex gap-4">
+                        <div className="flex items-center space-x-2">
+                          <input 
+                            type="radio" 
+                            id="yearNumber" 
+                            name="invoiceNumberingScheme" 
+                            value="year-number"
+                            checked={invoiceSettings.invoiceNumberingScheme === 'year-number'}
+                            onChange={handleInvoiceSettingsChange} 
+                          />
+                          <Label htmlFor="yearNumber">Year-Number (e.g., INV-2025-001)</Label>
+                        </div>
+                        
+                        <div className="flex items-center space-x-2">
+                          <input 
+                            type="radio" 
+                            id="random" 
+                            name="invoiceNumberingScheme" 
+                            value="random"
+                            checked={invoiceSettings.invoiceNumberingScheme === 'random'}
+                            onChange={handleInvoiceSettingsChange} 
+                          />
+                          <Label htmlFor="random">Random (e.g., INV-A7B3C2)</Label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <Button type="submit">Save Invoice Settings</Button>
+                </form>
+              </CardContent>
+            </Card>
+          </TabsContent>
+          
+          <TabsContent value="payment" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Payment Settings</CardTitle>
+                <CardDescription>
+                  Connect your Stripe account to receive payments from clients
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-col gap-4 p-4 border rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-medium">Stripe Payments</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Allow clients to pay invoices directly using credit cards
+                      </p>
+                    </div>
+                    <Button onClick={connectStripe}>
+                      Connect Stripe
+                    </Button>
+                  </div>
+                </div>
+                
+                <div className="flex flex-col gap-2">
+                  <h4 className="font-medium">Manual API Key Setup</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    If you prefer to manually set up Stripe, you can enter your API keys directly
+                  </p>
+                  <div className="grid gap-2">
+                    <Label htmlFor="stripePublishableKey">Stripe Publishable Key</Label>
+                    <Input
+                      id="stripePublishableKey"
+                      name="stripePublishableKey"
+                      placeholder="pk_test_..."
+                    />
+                  </div>
+                  
+                  <div className="grid gap-2 mt-2">
+                    <Label htmlFor="stripeSecretKey">Stripe Secret Key</Label>
+                    <Input
+                      id="stripeSecretKey"
+                      name="stripeSecretKey"
+                      type="password"
+                      placeholder="sk_test_..."
+                    />
+                  </div>
+                  
+                  <Button className="mt-2">Save API Keys</Button>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
           
           <TabsContent value="account" className="space-y-6">

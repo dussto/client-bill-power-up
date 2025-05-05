@@ -92,7 +92,19 @@ export default function SendInvoicePage() {
       try {
         setIsLoadingDomains(true);
         const domains = await getUserDomains();
-        setVerifiedDomains(domains || []);
+        
+        // Only set verified domains
+        if (domains && domains.length > 0) {
+          setVerifiedDomains(domains || []);
+          
+          // If we have verified domains, set the first one as default
+          if (domains.length > 0) {
+            setEmailData(prevData => ({
+              ...prevData,
+              fromDomain: domains[0] // Set the first domain as default
+            }));
+          }
+        }
       } catch (error) {
         console.error("Error loading domains:", error);
         toast({
@@ -112,7 +124,8 @@ export default function SendInvoicePage() {
     if (client && invoice && currentUser) {
       const formattedDate = formatDate(invoice.dueDate);
       
-      setEmailData({
+      setEmailData(prev => ({
+        ...prev,
         to: client.email,
         subject: `Invoice #${invoice.invoiceNumber} from ${currentUser?.company || 'Your Company'}`,
         message: `Dear ${client.fullName},\n\nPlease find attached invoice #${invoice.invoiceNumber} for $${invoice.total.toFixed(2)}.\n\nPayment is due by ${formattedDate}.\n\nThank you for your business.\n\nSincerely,\n${currentUser?.fullName || 'Your Name'}\n${currentUser?.company || 'Your Company'}`,
@@ -120,7 +133,7 @@ export default function SendInvoicePage() {
         markAsSent: true,
         fromDomain: '',
         fromName: currentUser?.company || 'Your Company',
-      });
+      }));
       
       setPageLoaded(true); // Mark page as loaded once all data is ready
     }
@@ -204,7 +217,7 @@ export default function SendInvoicePage() {
       toast({
         title: "Invoice sent",
         description: data?.usedCustomDomain 
-          ? `Invoice #${invoice.invoiceNumber} has been sent from ${data?.fromEmail}` 
+          ? `Invoice #${invoice.invoiceNumber} has been sent to ${client.email} from ${data?.fromEmail}` 
           : `Invoice #${invoice.invoiceNumber} has been sent in testing mode`,
       });
       

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Loader2, Check, AlertTriangle, Plus, Trash2, RefreshCw, Award, ExternalLink } from 'lucide-react';
+import { Loader2, Check, AlertTriangle, Plus, Trash2, RefreshCw, Award, ExternalLink, Copy } from 'lucide-react';
 import { 
   addEmailDomain, 
   checkDomainStatus, 
@@ -16,6 +16,7 @@ import {
 } from '@/utils/emailDomains';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Table,
   TableBody,
@@ -215,71 +216,10 @@ export default function EmailDomainManager() {
             description: "DNS records loaded successfully.",
           });
         } else {
-          // If we still don't have DNS records, make one more direct attempt with a longer timeout
-          try {
-            console.log("Making direct call to verify endpoint as a last resort");
-            
-            // Use a slightly different approach with a 5-second timeout
-            const directAttemptPromise = supabase.functions.invoke('manage-email-domains', {
-              body: { action: 'verify', domain: domainToCheck }
-            });
-            
-            // Race the promise against a timeout
-            const timeoutPromise = new Promise((_, reject) => {
-              setTimeout(() => reject(new Error("Request timed out")), 5000);
-            });
-            
-            const lastAttemptResponse = await Promise.race([directAttemptPromise, timeoutPromise]);
-            
-            if (lastAttemptResponse.data?.dnsRecords && lastAttemptResponse.data.dnsRecords.length > 0) {
-              setDnsRecords(prev => ({
-                ...prev,
-                [domainToCheck]: lastAttemptResponse.data.dnsRecords || []
-              }));
-              setCurrentDomain(domainToCheck);
-              
-              toast({
-                title: `Domain status: ${response.status || 'pending'}`,
-                description: "DNS records retrieved successfully.",
-              });
-              return;
-            }
-          } catch (lastAttemptError) {
-            console.error("Last resort attempt failed:", lastAttemptError);
-          }
-
-          // Use default Resend DNS records as fallback
-          const defaultDnsRecords = [
-            {
-              type: "MX",
-              name: "send",
-              value: "feedback-smtp.us-east-1.amazonses.com",
-              priority: 10,
-              ttl: "Auto"
-            },
-            {
-              type: "TXT",
-              name: "send",
-              value: "v=spf1 include:amazonses.com ~all",
-              ttl: "Auto"
-            },
-            {
-              type: "TXT",
-              name: "resend._domainkey",
-              value: "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC/lqwCiB74WBLfpXvPqY6Dn2svh3lq91L2pCvVNBfjLYMur62bMCUGwOHmS4/7Njl/xyKExPpoPVDXdH27HdrvcxI4A/9z+mNN2gnLZfpgMu/RiQ+duPOJFIrjMDIfRCV5FUa5aXKMY375BYlfOXHRtJZYIDxxBd1/Fgx4TXB8cwIDAQAB",
-              ttl: "Auto"
-            }
-          ];
-          
-          setDnsRecords(prev => ({
-            ...prev,
-            [domainToCheck]: defaultDnsRecords
-          }));
-          setCurrentDomain(domainToCheck);
-          
           toast({
             title: `Domain status: ${response.status || 'pending'}`,
-            description: "Applied generic DNS records. Please use these for verification.",
+            description: "No DNS records returned. Please try again later.",
+            variant: "destructive",
           });
         }
       } else {
@@ -316,6 +256,12 @@ export default function EmailDomainManager() {
             ...prev,
             [domainToVerify]: response.status
           }));
+          
+          toast({
+            title: `Domain verification ${response.status === 'verified' ? 'successful' : 'in progress'}`,
+            description: response.message || "Verification request submitted",
+            variant: response.status === 'verified' ? 'default' : 'default',
+          });
         }
         
         if (response.dnsRecords && response.dnsRecords.length > 0) {
@@ -324,62 +270,9 @@ export default function EmailDomainManager() {
             [domainToVerify]: response.dnsRecords || []
           }));
           setCurrentDomain(domainToVerify);
-          
-          toast({
-            title: `Domain verification ${response.status === 'verified' ? 'successful' : 'in progress'}`,
-            description: "DNS records loaded successfully.",
-          });
         } else {
           // If verify didn't return DNS records, try status check
-          const statusResponse = await checkDomainStatus(domainToVerify);
-          
-          if (statusResponse.success && statusResponse.dnsRecords && statusResponse.dnsRecords.length > 0) {
-            setDnsRecords(prev => ({
-              ...prev,
-              [domainToVerify]: statusResponse.dnsRecords || []
-            }));
-            setCurrentDomain(domainToVerify);
-            
-            toast({
-              title: `Domain verification ${statusResponse.status === 'verified' ? 'successful' : 'in progress'}`,
-              description: "DNS records retrieved from status check.",
-            });
-          } else {
-            // Use default Resend DNS records as fallback
-            const defaultDnsRecords = [
-              {
-                type: "MX",
-                name: "send",
-                value: "feedback-smtp.us-east-1.amazonses.com",
-                priority: 10,
-                ttl: "Auto"
-              },
-              {
-                type: "TXT",
-                name: "send",
-                value: "v=spf1 include:amazonses.com ~all",
-                ttl: "Auto"
-              },
-              {
-                type: "TXT",
-                name: "resend._domainkey",
-                value: "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC/lqwCiB74WBLfpXvPqY6Dn2svh3lq91L2pCvVNBfjLYMur62bMCUGwOHmS4/7Njl/xyKExPpoPVDXdH27HdrvcxI4A/9z+mNN2gnLZfpgMu/RiQ+duPOJFIrjMDIfRCV5FUa5aXKMY375BYlfOXHRtJZYIDxxBd1/Fgx4TXB8cwIDAQAB",
-                ttl: "Auto"
-              }
-            ];
-            
-            setDnsRecords(prev => ({
-              ...prev,
-              [domainToVerify]: defaultDnsRecords
-            }));
-            setCurrentDomain(domainToVerify);
-            
-            toast({
-              title: `Domain verification attempted`,
-              description: "Applied generic DNS records. Please use these for verification.",
-              variant: "default",
-            });
-          }
+          await handleCheckStatus(domainToVerify);
         }
       } else {
         toast({
@@ -457,6 +350,27 @@ export default function EmailDomainManager() {
     }
   };
 
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text).then(
+      () => {
+        toast({
+          title: "Copied!",
+          description: "Text copied to clipboard",
+          duration: 2000,
+        });
+      },
+      (err) => {
+        console.error('Could not copy text: ', err);
+        toast({
+          title: "Copy failed",
+          description: "Could not copy text to clipboard",
+          variant: "destructive",
+          duration: 2000,
+        });
+      }
+    );
+  };
+
   const refreshDomains = async () => {
     await fetchUserDomains();
     toast({
@@ -472,6 +386,23 @@ export default function EmailDomainManager() {
     if (!dnsRecords[domainName] || dnsRecords[domainName].length === 0) {
       handleCheckStatus(domainName);
     }
+  };
+
+  // Check if there's a verified domain
+  const hasVerifiedDomain = Object.values(verificationStatus).some(status => status === 'verified');
+
+  // Get badge variant based on status
+  const getBadgeVariant = (status: string | null) => {
+    if (status === 'verified') return 'success';
+    if (status === 'pending') return 'outline';
+    if (status === 'failed') return 'destructive';
+    return 'secondary'; // For 'not_started' or null
+  };
+
+  // Format status text
+  const formatStatus = (status: string) => {
+    if (status === 'not_started') return 'Not Started';
+    return status.charAt(0).toUpperCase() + status.slice(1);
   };
 
   return (
@@ -491,9 +422,12 @@ export default function EmailDomainManager() {
               value={domain}
               onChange={(e) => setDomain(e.target.value)}
               className="flex-1"
-              disabled={isAdding}
+              disabled={isAdding || (hasVerifiedDomain && domains.length > 0)}
             />
-            <Button type="submit" disabled={isAdding}>
+            <Button 
+              type="submit" 
+              disabled={isAdding || (hasVerifiedDomain && domains.length > 0)}
+            >
               {isAdding ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -507,6 +441,16 @@ export default function EmailDomainManager() {
               )}
             </Button>
           </form>
+
+          {hasVerifiedDomain && domains.length > 0 && (
+            <Alert className="bg-muted">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Domain Already Verified</AlertTitle>
+              <AlertDescription>
+                You already have a verified domain that will be used for sending emails. If you want to use a different domain, remove the existing one first.
+              </AlertDescription>
+            </Alert>
+          )}
 
           {/* Domains list */}
           <div className="space-y-4">
@@ -555,16 +499,11 @@ export default function EmailDomainManager() {
                     <div className="flex items-center space-x-2">
                       <span>{domainName}</span>
                       {verificationStatus[domainName] && (
-                        <Badge variant={
-                          verificationStatus[domainName] === 'verified' ? 'default' : 
-                          verificationStatus[domainName] === 'pending' ? 'outline' : 
-                          'destructive'
-                        }>
+                        <Badge variant={getBadgeVariant(verificationStatus[domainName])}>
                           {verificationStatus[domainName] === 'verified' && 
                             <Check className="h-3 w-3 mr-1" />
                           }
-                          {verificationStatus[domainName]?.charAt(0).toUpperCase() + 
-                            verificationStatus[domainName]?.slice(1)}
+                          {formatStatus(verificationStatus[domainName] || '')}
                         </Badge>
                       )}
                     </div>
@@ -651,13 +590,9 @@ export default function EmailDomainManager() {
             <div className="flex items-center justify-between">
               <CardTitle>DNS Verification for {currentDomain}</CardTitle>
               {verificationStatus[currentDomain] && (
-                <Badge variant={
-                  verificationStatus[currentDomain] === 'verified' ? 'default' : 
-                  verificationStatus[currentDomain] === 'pending' ? 'outline' : 
-                  'destructive'
-                }>
+                <Badge variant={getBadgeVariant(verificationStatus[currentDomain])}>
                   {verificationStatus[currentDomain] === 'verified' && <Check className="h-3 w-3 mr-1" />}
-                  {verificationStatus[currentDomain]?.charAt(0).toUpperCase() + verificationStatus[currentDomain]?.slice(1)}
+                  {formatStatus(verificationStatus[currentDomain] || '')}
                 </Badge>
               )}
             </div>
@@ -685,20 +620,85 @@ export default function EmailDomainManager() {
                       {dnsRecords[currentDomain].some(record => record.ttl !== undefined) && (
                         <TableHead>TTL</TableHead>
                       )}
+                      <TableHead>Copy</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {dnsRecords[currentDomain].map((record, index) => (
                       <TableRow key={index}>
-                        <TableCell className="font-medium">{record.type}</TableCell>
-                        <TableCell>{record.name}</TableCell>
-                        <TableCell className="font-mono text-xs break-all">{record.value}</TableCell>
+                        <TableCell className="font-medium">
+                          {record.type}
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="ml-1 p-0 h-auto" 
+                            onClick={() => copyToClipboard(record.type)}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </TableCell>
+                        <TableCell>
+                          {record.name}
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="ml-1 p-0 h-auto" 
+                            onClick={() => copyToClipboard(record.name)}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs break-all">
+                          {record.value}
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="ml-1 p-0 h-auto" 
+                            onClick={() => copyToClipboard(record.value)}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </TableCell>
                         {dnsRecords[currentDomain].some(record => record.priority !== undefined) && (
-                          <TableCell>{record.priority || 'N/A'}</TableCell>
+                          <TableCell>
+                            {record.priority || 'N/A'}
+                            {record.priority && (
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="ml-1 p-0 h-auto" 
+                                onClick={() => record.priority && copyToClipboard(record.priority.toString())}
+                              >
+                                <Copy className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </TableCell>
                         )}
                         {dnsRecords[currentDomain].some(record => record.ttl !== undefined) && (
-                          <TableCell>{record.ttl || 'Auto'}</TableCell>
+                          <TableCell>
+                            {record.ttl || 'Auto'}
+                            {record.ttl && (
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="ml-1 p-0 h-auto" 
+                                onClick={() => record.ttl && copyToClipboard(record.ttl.toString())}
+                              >
+                                <Copy className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </TableCell>
                         )}
+                        <TableCell>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => copyToClipboard(`Type: ${record.type}\nName: ${record.name}\nValue: ${record.value}${record.priority ? '\nPriority: ' + record.priority : ''}${record.ttl ? '\nTTL: ' + record.ttl : ''}`)}
+                          >
+                            <Copy className="h-4 w-4 mr-1" />
+                            Copy All
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -708,7 +708,7 @@ export default function EmailDomainManager() {
                   <AlertTriangle className="h-4 w-4" />
                   <AlertTitle>Important</AlertTitle>
                   <AlertDescription>
-                    These are the typical DNS records used for Resend email domains. If you can't see the actual records from your Resend account due to API rate limiting, you can still use these records for verification. Alternatively, view your records directly in the <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="underline">Resend Dashboard</a>.
+                    Add all DNS records shown above, including both required and recommended records for best email deliverability. View your DNS records in the <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="underline">Resend Dashboard</a> if you need more information.
                   </AlertDescription>
                 </Alert>
               </>
