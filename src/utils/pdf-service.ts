@@ -15,8 +15,7 @@ export const generatePDF = async (
       logging: false,
       useCORS: true,
       allowTaint: true,
-      // Better font rendering
-      fontDisplay: 'swap'
+      backgroundColor: "#ffffff" // Ensure white background
     });
     
     const imgData = canvas.toDataURL('image/png', 1.0); // Use highest quality
