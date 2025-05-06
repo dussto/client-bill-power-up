@@ -15,6 +15,7 @@ import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/integrations/supabase/client';
 import { Textarea } from '@/components/ui/textarea';
 import { EmailTemplate } from '@/context/DataContextTypes';
+import PackageManager from '@/components/packages/PackageManager';
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
@@ -569,24 +570,7 @@ export default function SettingsPage() {
           </TabsContent>
           
           <TabsContent value="packages">
-            <Card>
-              <CardHeader>
-                <CardTitle>Packages Management</CardTitle>
-                <CardDescription>
-                  Create and manage service packages for your clients
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium">Available Packages</h3>
-                  <p className="text-muted-foreground">
-                    Create packages with different features and pricing options to offer to your clients.
-                  </p>
-                  
-                  <Button>Create New Package</Button>
-                </div>
-              </CardContent>
-            </Card>
+            <PackageManager />
           </TabsContent>
           
           <TabsContent value="account" className="space-y-6">
