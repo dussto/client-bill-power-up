@@ -256,7 +256,7 @@ export default function SendInvoicePage() {
         
         {verifiedDomains.length === 0 && (
           <Alert>
-            <Info className="h-4 w-4" />
+            <AlertTriangle className="h-4 w-4" />
             <AlertTitle>No Verified Domains</AlertTitle>
             <AlertDescription>
               You don't have any verified email domains yet. Emails will be sent in testing mode to your verified email address.

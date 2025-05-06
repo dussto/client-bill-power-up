@@ -73,7 +73,7 @@ const handler = async (req: Request): Promise<Response> => {
     let isUsingCustomDomain = false;
     
     // Check if we should use a custom domain
-    if (fromDomain) {
+    if (fromDomain && fromDomain !== "test") {
       try {
         // Verify domain status with Resend
         const domainResponse = await resend.domains.get(fromDomain);
@@ -87,20 +87,20 @@ const handler = async (req: Request): Promise<Response> => {
           console.log("Using verified custom domain:", fromDomain);
         } else {
           console.log("Domain is not verified yet:", fromDomain, "Status:", domainResponse?.data?.status);
+          throw new Error(`Domain ${fromDomain} is not verified. Please verify it first before sending emails.`);
         }
       } catch (error) {
-        console.error(`Custom domain validation failed: ${error instanceof Error ? error.message : String(error)}. Falling back to default email.`);
+        console.error(`Custom domain validation failed: ${error instanceof Error ? error.message : String(error)}`);
+        throw new Error(`Domain validation failed: ${error instanceof Error ? error.message : String(error)}`);
       }
-    } else {
-      console.log("No custom domain provided, using default sending address");
-    }
-    
-    // If no custom domain is configured, use the verified email
-    if (!isUsingCustomDomain) {
-      // Get the verified email from environment or fallback
+    } else if (fromDomain === "test") {
+      // User explicitly selected test mode
       const verifiedEmail = Deno.env.get("RESEND_VERIFIED_EMAIL") || "onboarding@resend.dev";
       fromEmail = `Invoice Creator <${verifiedEmail}>`;
-      console.log("Using default sending address:", fromEmail);
+      console.log("Using test mode with address:", fromEmail);
+    } else {
+      // No domain provided
+      throw new Error("You must select a verified domain to send emails directly to clients.");
     }
 
     // Set up email sending options
@@ -160,7 +160,7 @@ const handler = async (req: Request): Promise<Response> => {
       JSON.stringify({ 
         success: false,
         error: error instanceof Error ? error.message : String(error),
-        hint: "If you're in testing mode, you need to verify a domain in Resend or set RESEND_VERIFIED_EMAIL to your verified email."
+        hint: "To send emails directly to clients, you must verify a domain in Resend and select it when sending."
       }),
       {
         status: 500,
