@@ -15,8 +15,6 @@ export const generatePDF = async (
       logging: false,
       useCORS: true,
       allowTaint: true,
-      // Improved text rendering
-      letterRendering: true,
       // Better font rendering
       fontDisplay: 'swap'
     });
