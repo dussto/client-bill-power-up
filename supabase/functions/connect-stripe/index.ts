@@ -27,8 +27,12 @@ serve(async (req) => {
       throw new Error("User ID is required");
     }
 
+    console.log("Creating Stripe Connect account for user:", userId);
+
     // Create a Stripe Connect account link for onboarding
     const account = await stripe.accounts.create({ type: "standard" });
+    
+    console.log("Created Stripe account:", account.id);
     
     const accountLink = await stripe.accountLinks.create({
       account: account.id,
@@ -36,6 +40,8 @@ serve(async (req) => {
       return_url: `${req.headers.get("origin")}/settings?stripe_success=true`,
       type: "account_onboarding",
     });
+
+    console.log("Created account link:", accountLink.url);
 
     // Return the URL where the user should be redirected to continue the Stripe Connect onboarding
     return new Response(

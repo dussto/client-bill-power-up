@@ -1,9 +1,11 @@
 
 import { Link } from 'react-router-dom';
-import { Check, Clock, Send, AlertTriangle, Loader2, Download, Edit } from 'lucide-react';
+import { Check, Clock, Send, AlertTriangle, Loader2, Download, Edit, Link as LinkIcon, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Client, Invoice } from '@/types';
+import { useToast } from '@/components/ui/use-toast';
+import { useState } from 'react';
 
 interface InvoiceActionsProps {
   invoice: Invoice;
@@ -26,6 +28,33 @@ const InvoiceActions = ({
   isLoading,
   isGeneratingPDF
 }: InvoiceActionsProps) => {
+  const { toast } = useToast();
+  const [isCopying, setIsCopying] = useState(false);
+
+  const copyPaymentLink = async () => {
+    setIsCopying(true);
+    try {
+      // Generate a payment link that would typically point to a Stripe checkout
+      const origin = window.location.origin;
+      const paymentLink = `${origin}/pay/${invoice.id}`;
+      
+      await navigator.clipboard.writeText(paymentLink);
+      
+      toast({
+        title: "Payment link copied",
+        description: "The payment link has been copied to your clipboard.",
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to copy",
+        description: "Could not copy the payment link. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCopying(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -61,6 +90,20 @@ const InvoiceActions = ({
                 <Send className="h-4 w-4 mr-2" />
                 Send Invoice
               </Link>
+            </Button>
+            
+            <Button 
+              onClick={copyPaymentLink} 
+              className="w-full" 
+              variant="outline"
+              disabled={isCopying}
+            >
+              {isCopying ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <LinkIcon className="h-4 w-4 mr-2" />
+              )}
+              {isCopying ? "Copying..." : "Copy Payment Link"}
             </Button>
             
             {(invoice.status === 'pending' || invoice.status === 'overdue') && (

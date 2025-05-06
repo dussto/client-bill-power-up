@@ -1,6 +1,9 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { Resend } from "npm:resend@1.0.0";
+import { encode } from "https://deno.land/std@0.220.1/encoding/base64.ts";
+import html2canvas from "https://esm.sh/html2canvas@1.4.1";
+import jsPDF from "https://esm.sh/jspdf@2.5.1";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
@@ -21,6 +24,7 @@ interface InvoiceEmailRequest {
   dueDate: string;
   fromDomain?: string; // Optional parameter for sender domain
   fromName?: string;   // Optional parameter for sender name
+  invoiceHtml?: string; // HTML representation of the invoice for PDF generation
 }
 
 // Helper function to get domain from email address
@@ -48,6 +52,7 @@ const handler = async (req: Request): Promise<Response> => {
       dueDate,
       fromDomain,
       fromName,
+      invoiceHtml,
     }: InvoiceEmailRequest = await req.json();
 
     const htmlContent = `
@@ -90,7 +95,7 @@ const handler = async (req: Request): Promise<Response> => {
       console.log("No custom domain provided, using default sending address");
     }
     
-    // If no custom domain is configured, we'll always use the test email
+    // If no custom domain is configured, use the verified email
     if (!isUsingCustomDomain) {
       // Get the verified email from environment or fallback
       const verifiedEmail = Deno.env.get("RESEND_VERIFIED_EMAIL") || "onboarding@resend.dev";
@@ -98,23 +103,21 @@ const handler = async (req: Request): Promise<Response> => {
       console.log("Using default sending address:", fromEmail);
     }
 
-    // Always send to the actual recipient when using a verified domain
-    const recipients = isUsingCustomDomain 
-      ? [to]
-      : [Deno.env.get("RESEND_VERIFIED_EMAIL") || "onboarding@resend.dev"];
-    
-    console.log("Sending email to:", recipients);
-    
     // Set up email sending options
-    const emailOptions = {
+    const emailOptions: any = {
       from: fromEmail,
-      to: recipients,
+      to: isUsingCustomDomain ? to : Deno.env.get("RESEND_VERIFIED_EMAIL") || "onboarding@resend.dev",
       reply_to: replyTo,
       subject: isUsingCustomDomain ? subject : `${subject} (Originally to: ${to})`,
       html: htmlContent,
     };
     
-    // If we're using the testing mode (not a custom domain), add a notice about it
+    // Add CC to sender if requested
+    if (copy && replyTo) {
+      emailOptions.bcc = [replyTo];
+    }
+
+    // In testing mode, add a notice about it
     if (!isUsingCustomDomain) {
       emailOptions.html = `
         <div style="background-color: #ffffe0; padding: 10px; margin-bottom: 15px; border: 1px solid #e6db55; border-radius: 4px;">
@@ -122,11 +125,6 @@ const handler = async (req: Request): Promise<Response> => {
         </div>
         ${htmlContent}
       `;
-    }
-
-    // Add CC to sender if requested
-    if (copy && replyTo) {
-      emailOptions.bcc = [replyTo];
     }
 
     console.log("Sending email with options:", JSON.stringify({
@@ -148,7 +146,7 @@ const handler = async (req: Request): Promise<Response> => {
       message: isUsingCustomDomain ? 
         "Email sent successfully to client." : 
         "Email sent to your test email address. To send to actual clients, verify a domain in Resend.",
-      recipient: recipients[0],
+      recipient: emailOptions.to,
       originalRecipient: to,
       usedCustomDomain: isUsingCustomDomain,
       fromEmail: fromEmail

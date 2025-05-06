@@ -13,6 +13,13 @@ export interface InvoiceSettings {
   invoiceNumberingScheme: string;
 }
 
+export interface EmailTemplate {
+  id: string;
+  name: string;
+  subject: string;
+  body: string;
+}
+
 export interface DataContextProps {
   clients: Client[];
   invoices: Invoice[];
@@ -28,4 +35,9 @@ export interface DataContextProps {
   getUser: () => User | null;
   invoiceSettings: InvoiceSettings;
   updateInvoiceSettings: (settings: Partial<InvoiceSettings>) => void;
+  emailTemplates: EmailTemplate[];
+  updateEmailTemplate: (id: string, template: Partial<EmailTemplate>) => void;
+  addEmailTemplate: (template: Omit<EmailTemplate, 'id'>) => EmailTemplate;
+  deleteEmailTemplate: (id: string) => boolean;
+  getEmailTemplate: (id: string) => EmailTemplate | undefined;
 }

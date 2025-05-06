@@ -25,6 +25,7 @@ import EditInvoicePage from "./pages/invoices/EditInvoicePage";
 import InvoiceDetailPage from "./pages/invoices/InvoiceDetailPage";
 import SendInvoicePage from "./pages/invoices/SendInvoicePage";
 import SettingsPage from "./pages/settings/SettingsPage";
+import PaymentPage from "./pages/payments/PaymentPage";
 
 const queryClient = new QueryClient();
 
@@ -41,6 +42,7 @@ const App = () => (
               <Route path="/" element={<HomePage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
+              <Route path="/pay/:invoiceId" element={<PaymentPage />} />
 
               {/* Protected Dashboard Routes */}
               <Route path="/dashboard" element={<DashboardPage />} />
