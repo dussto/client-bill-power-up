@@ -13,6 +13,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useData } from '@/context/DataContext';
 import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/integrations/supabase/client';
+import { Textarea } from '@/components/ui/textarea';
+import { EmailTemplate } from '@/context/DataContextTypes';
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
