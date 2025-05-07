@@ -1,8 +1,7 @@
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Check, Plus, Edit, Trash2 } from 'lucide-react';
+import { Check, Plus, Edit, Trash2, AlertCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,6 +9,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
 import { Switch } from '@/components/ui/switch';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import useUserRole from '@/components/auth/UserRole';
 
 export interface ServicePackage {
   id: string;
@@ -100,7 +101,8 @@ const defaultPackages: ServicePackage[] = [
 ];
 
 export default function PackageManager() {
-  const [packages, setPackages] = useState<ServicePackage[]>(defaultPackages);
+  const { isAdmin, isLoading: isRoleLoading } = useUserRole();
+  const [packages, setPackages] = useState<ServicePackage[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [currentPackage, setCurrentPackage] = useState<ServicePackage | null>(null);
@@ -125,6 +127,24 @@ export default function PackageManager() {
     },
   });
   const { toast } = useToast();
+
+  useEffect(() => {
+    // Load packages from localStorage or use defaults
+    const storedPackages = localStorage.getItem('servicePackages');
+    if (storedPackages) {
+      setPackages(JSON.parse(storedPackages));
+    } else {
+      setPackages(defaultPackages);
+      localStorage.setItem('servicePackages', JSON.stringify(defaultPackages));
+    }
+  }, []);
+
+  // Save packages to localStorage whenever they change
+  useEffect(() => {
+    if (packages.length > 0) {
+      localStorage.setItem('servicePackages', JSON.stringify(packages));
+    }
+  }, [packages]);
 
   const handleAddPackage = () => {
     if (!newPackage.name || !newPackage.description || !newPackage.price) {
@@ -229,6 +249,107 @@ export default function PackageManager() {
       default: return cycle;
     }
   };
+
+  if (isRoleLoading) {
+    return <div>Loading...</div>;
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold tracking-tight">Packages</h2>
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Access Restricted</AlertTitle>
+          <AlertDescription>
+            Only administrators can manage packages. If you need to make changes, please contact your administrator.
+          </AlertDescription>
+        </Alert>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {packages.map((pkg) => (
+            <Card key={pkg.id} className="flex flex-col">
+              <CardHeader>
+                <CardTitle>{pkg.name}</CardTitle>
+                <p className="text-sm text-muted-foreground">{pkg.description}</p>
+                <div className="mt-4">
+                  {formatPrice(pkg.price, getCycleDisplay(pkg.billingCycle))}
+                </div>
+              </CardHeader>
+              <CardContent className="flex-grow">
+                <h4 className="font-medium mb-2">Features</h4>
+                <ul className="space-y-2">
+                  <li className="flex items-center">
+                    {pkg.features.stripeIntegration ? 
+                      <Check className="h-4 w-4 mr-2 text-green-500" /> : 
+                      <span className="h-4 w-4 mr-2" />
+                    }
+                    Stripe Integration
+                  </li>
+                  <li className="flex items-center">
+                    <Check className="h-4 w-4 mr-2 text-green-500" />
+                    {pkg.features.sendingDomains} Sending Domain{pkg.features.sendingDomains > 1 ? 's' : ''}
+                  </li>
+                  <li className="flex items-center">
+                    {pkg.features.serviceCreation ? 
+                      <Check className="h-4 w-4 mr-2 text-green-500" /> : 
+                      <span className="h-4 w-4 mr-2" />
+                    }
+                    Service Creation
+                  </li>
+                  <li>
+                    <span className="font-medium">Payment Options:</span>
+                    <ul className="pl-6 mt-1 space-y-1">
+                      <li className="flex items-center">
+                        {pkg.features.paymentOptions.offline ? 
+                          <Check className="h-3 w-3 mr-2 text-green-500" /> : 
+                          <span className="h-3 w-3 mr-2" />
+                        }
+                        Offline Payments
+                      </li>
+                      <li className="flex items-center">
+                        {pkg.features.paymentOptions.stripe ? 
+                          <Check className="h-3 w-3 mr-2 text-green-500" /> : 
+                          <span className="h-3 w-3 mr-2" />
+                        }
+                        Stripe Payments
+                      </li>
+                    </ul>
+                  </li>
+                  <li>
+                    <span className="font-medium">Payment Terms:</span>
+                    <ul className="pl-6 mt-1 space-y-1">
+                      <li className="flex items-center">
+                        {pkg.features.paymentTerms.oneOffs ? 
+                          <Check className="h-3 w-3 mr-2 text-green-500" /> : 
+                          <span className="h-3 w-3 mr-2" />
+                        }
+                        One-off Payments
+                      </li>
+                      <li className="flex items-center">
+                        {pkg.features.paymentTerms.monthly ? 
+                          <Check className="h-3 w-3 mr-2 text-green-500" /> : 
+                          <span className="h-3 w-3 mr-2" />
+                        }
+                        Monthly Subscriptions
+                      </li>
+                      <li className="flex items-center">
+                        {pkg.features.paymentTerms.annually ? 
+                          <Check className="h-3 w-3 mr-2 text-green-500" /> : 
+                          <span className="h-3 w-3 mr-2" />
+                        }
+                        Annual Subscriptions
+                      </li>
+                    </ul>
+                  </li>
+                </ul>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

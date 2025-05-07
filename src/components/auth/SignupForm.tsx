@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -15,12 +15,23 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { supabase } from "@/integrations/supabase/client";
+import { ServicePackage } from "@/components/packages/PackageManager";
 
 const signupSchema = z.object({
   fullName: z.string().min(2, { message: "Name must be at least 2 characters" }),
   email: z.string().email({ message: "Please enter a valid email address" }),
   company: z.string().optional(),
+  packageId: z.string({ required_error: "Please select a package" }),
   password: z.string().min(8, { message: "Password must be at least 8 characters" }),
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {
@@ -33,6 +44,8 @@ type SignupFormValues = z.infer<typeof signupSchema>;
 export default function SignupForm() {
   const { signup } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [packages, setPackages] = useState<ServicePackage[]>([]);
+  const [isLoadingPackages, setIsLoadingPackages] = useState(true);
 
   const form = useForm<SignupFormValues>({
     resolver: zodResolver(signupSchema),
@@ -40,15 +53,95 @@ export default function SignupForm() {
       fullName: "",
       email: "",
       company: "",
+      packageId: "",
       password: "",
       confirmPassword: "",
     },
   });
 
+  useEffect(() => {
+    // In a real app, we'd fetch this from the database
+    // For now, we're using the default packages
+    const fetchPackages = () => {
+      try {
+        // Get packages from localStorage
+        const storedPackages = localStorage.getItem('servicePackages');
+        if (storedPackages) {
+          const parsedPackages = JSON.parse(storedPackages);
+          setPackages(parsedPackages);
+        } else {
+          // Default packages if none exist
+          const defaultPackages = [
+            {
+              id: 'basic',
+              name: 'Basic',
+              description: 'Essential features for small businesses',
+              price: 9.99,
+              billingCycle: 'monthly',
+              features: {
+                stripeIntegration: false,
+                sendingDomains: 1,
+                serviceCreation: false,
+                paymentOptions: {
+                  offline: true,
+                  stripe: false,
+                },
+                paymentTerms: {
+                  oneOffs: true,
+                  monthly: false,
+                  annually: false,
+                },
+              },
+            },
+            {
+              id: 'pro',
+              name: 'Professional',
+              description: 'Advanced features for growing businesses',
+              price: 29.99,
+              billingCycle: 'monthly',
+              features: {
+                stripeIntegration: true,
+                sendingDomains: 3,
+                serviceCreation: true,
+                paymentOptions: {
+                  offline: true,
+                  stripe: true,
+                },
+                paymentTerms: {
+                  oneOffs: true,
+                  monthly: true,
+                  annually: false,
+                },
+              },
+            },
+          ];
+          localStorage.setItem('servicePackages', JSON.stringify(defaultPackages));
+          setPackages(defaultPackages);
+        }
+      } catch (error) {
+        console.error("Error fetching packages:", error);
+      } finally {
+        setIsLoadingPackages(false);
+      }
+    };
+
+    fetchPackages();
+  }, []);
+
   const onSubmit = async (values: SignupFormValues) => {
     try {
       setIsSubmitting(true);
-      await signup(values.email, values.password, values.fullName, values.company || undefined);
+
+      // Find the selected package
+      const selectedPackage = packages.find(pkg => pkg.id === values.packageId);
+      
+      await signup(
+        values.email, 
+        values.password, 
+        values.fullName, 
+        values.company || undefined, 
+        selectedPackage ? selectedPackage.id : undefined
+      );
     } catch (error) {
       console.error("Signup failed:", error);
       setIsSubmitting(false);
@@ -101,6 +194,34 @@ export default function SignupForm() {
                   <FormControl>
                     <Input placeholder="Your Company" {...field} />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="packageId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Package</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a package" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {isLoadingPackages ? (
+                        <SelectItem value="loading" disabled>Loading packages...</SelectItem>
+                      ) : (
+                        packages.map((pkg) => (
+                          <SelectItem key={pkg.id} value={pkg.id}>
+                            {pkg.name} - ${pkg.price}/{pkg.billingCycle === 'one-time' ? 'one-time' : pkg.billingCycle}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

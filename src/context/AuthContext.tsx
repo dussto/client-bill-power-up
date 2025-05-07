@@ -3,13 +3,14 @@ import { createContext, useState, useContext, useEffect, ReactNode } from 'react
 import { useNavigate } from 'react-router-dom';
 import { User } from '@/types';
 import { useToast } from '@/components/ui/use-toast';
+import useUserRole from '@/components/auth/UserRole';
 
 interface AuthContextProps {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, fullName: string, company?: string) => Promise<void>;
+  signup: (email: string, password: string, fullName: string, company?: string, packageId?: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -66,7 +67,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const signup = async (email: string, password: string, fullName: string, company?: string) => {
+  const signup = async (email: string, password: string, fullName: string, company?: string, packageId?: string) => {
     try {
       setIsLoading(true);
       // Simulate registration delay
@@ -78,10 +79,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         email,
         fullName,
         company,
+        packageId,
       };
       
       setUser(mockUser);
       localStorage.setItem('invoice_app_user', JSON.stringify(mockUser));
+      
+      // Store client data with selected package
+      const clientsData = localStorage.getItem('clients_data');
+      const clients = clientsData ? JSON.parse(clientsData) : [];
+      clients.push({
+        id: mockUser.id,
+        fullName,
+        email,
+        company,
+        packageId,
+        createdAt: new Date().toISOString(),
+      });
+      localStorage.setItem('clients_data', JSON.stringify(clients));
+      
       toast({
         title: "Registration successful",
         description: "Your account has been created.",

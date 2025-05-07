@@ -108,25 +108,15 @@ const handler = async (req: Request): Promise<Response> => {
     // Set up email sending options
     const emailOptions: any = {
       from: fromEmail,
-      to: isUsingCustomDomain ? to : Deno.env.get("RESEND_VERIFIED_EMAIL") || "onboarding@resend.dev",
+      to: to, // Now we're sending directly to the client email
       reply_to: replyTo,
-      subject: isUsingCustomDomain ? subject : `${subject} (Originally to: ${to})`,
+      subject: subject,
       html: htmlContent,
     };
     
     // Add CC to sender if requested
     if (copy && replyTo) {
       emailOptions.bcc = [replyTo];
-    }
-
-    // In testing mode, add a notice about it
-    if (!isUsingCustomDomain) {
-      emailOptions.html = `
-        <div style="background-color: #ffffe0; padding: 10px; margin-bottom: 15px; border: 1px solid #e6db55; border-radius: 4px;">
-          <strong>TESTING MODE:</strong> This email would have been sent to ${to}
-        </div>
-        ${htmlContent}
-      `;
     }
 
     console.log("Sending email with options:", JSON.stringify({
@@ -145,11 +135,8 @@ const handler = async (req: Request): Promise<Response> => {
 
     return new Response(JSON.stringify({
       success: true,
-      message: isUsingCustomDomain ? 
-        "Email sent successfully to client." : 
-        "Email sent to your test email address. To send to actual clients, verify a domain in Resend.",
+      message: "Email sent successfully to client.",
       recipient: emailOptions.to,
-      originalRecipient: to,
       usedCustomDomain: isUsingCustomDomain,
       fromEmail: fromEmail
     }), {
