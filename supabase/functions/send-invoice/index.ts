@@ -65,6 +65,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     let fromEmail;
     let isUsingCustomDomain = false;
+    let verifiedEmail = Deno.env.get("RESEND_VERIFIED_EMAIL") || "onboarding@resend.dev";
     
     // Check if we should use a custom domain
     if (fromDomain && fromDomain !== "test") {
@@ -82,25 +83,21 @@ const handler = async (req: Request): Promise<Response> => {
         } else {
           console.log("Domain is not verified yet:", fromDomain, "Status:", domainResponse?.data?.status);
           // Not throwing error here, just using test mode instead
-          const verifiedEmail = Deno.env.get("RESEND_VERIFIED_EMAIL") || "onboarding@resend.dev";
           fromEmail = `Invoice Creator <${verifiedEmail}>`;
           console.log("Domain not verified, falling back to test mode with:", fromEmail);
         }
       } catch (error) {
         console.error(`Custom domain validation failed: ${error instanceof Error ? error.message : String(error)}`);
         // Not throwing error here, just using test mode instead
-        const verifiedEmail = Deno.env.get("RESEND_VERIFIED_EMAIL") || "onboarding@resend.dev";
         fromEmail = `Invoice Creator <${verifiedEmail}>`;
         console.log("Domain validation error, falling back to test mode with:", fromEmail);
       }
     } else if (fromDomain === "test") {
       // User explicitly selected test mode
-      const verifiedEmail = Deno.env.get("RESEND_VERIFIED_EMAIL") || "onboarding@resend.dev";
       fromEmail = `Invoice Creator <${verifiedEmail}>`;
       console.log("Using test mode with address:", fromEmail);
     } else {
       // No domain provided - using test mode
-      const verifiedEmail = Deno.env.get("RESEND_VERIFIED_EMAIL") || "onboarding@resend.dev";
       fromEmail = `Invoice Creator <${verifiedEmail}>`;
       console.log("No domain specified, using test mode with:", fromEmail);
     }
@@ -108,7 +105,7 @@ const handler = async (req: Request): Promise<Response> => {
     // Set up email sending options
     const emailOptions: any = {
       from: fromEmail,
-      to: to, // Now we're sending directly to the client email
+      to: isUsingCustomDomain ? to : verifiedEmail, // Only send to actual client if using verified domain
       reply_to: replyTo,
       subject: subject,
       html: htmlContent,
@@ -116,7 +113,12 @@ const handler = async (req: Request): Promise<Response> => {
     
     // Add CC to sender if requested
     if (copy && replyTo) {
-      emailOptions.bcc = [replyTo];
+      if (isUsingCustomDomain) {
+        emailOptions.bcc = [replyTo];
+      } else {
+        // In test mode, add replyTo as an explicit recipient if copy is requested
+        emailOptions.to = [verifiedEmail, replyTo];
+      }
     }
 
     console.log("Sending email with options:", JSON.stringify({
@@ -136,9 +138,10 @@ const handler = async (req: Request): Promise<Response> => {
     return new Response(JSON.stringify({
       success: true,
       message: "Email sent successfully to client.",
-      recipient: emailOptions.to,
+      recipient: isUsingCustomDomain ? to : verifiedEmail,
       usedCustomDomain: isUsingCustomDomain,
-      fromEmail: fromEmail
+      fromEmail: fromEmail,
+      testMode: !isUsingCustomDomain
     }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },

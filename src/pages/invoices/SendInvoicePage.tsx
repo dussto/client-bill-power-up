@@ -203,10 +203,11 @@ export default function SendInvoicePage() {
       if (error) {
         throw new Error(error.message);
       }
-      
-      // Check if we're in testing mode
-      if (!data?.usedCustomDomain) {
-        setTestModeInfo(`Your email was sent in testing mode to ${data?.recipient} instead of ${emailData.to}. To send emails directly to clients, verify your domain in the Settings > Email Domains section.`);
+
+      // If API responded with success but we're in test mode
+      if (data?.testMode) {
+        const verifiedEmail = data?.recipient || "your verified email";
+        setTestModeInfo(`Your email was sent in testing mode to ${verifiedEmail} instead of ${emailData.to}. To send emails directly to clients, verify your domain in the Settings > Email Domains section.`);
       }
       
       // If markAsSent is true, update the invoice status
@@ -218,10 +219,10 @@ export default function SendInvoicePage() {
         title: "Invoice sent",
         description: data?.usedCustomDomain 
           ? `Invoice #${invoice.invoiceNumber} has been sent to ${client.email} from ${data?.fromEmail}` 
-          : `Invoice #${invoice.invoiceNumber} has been sent in testing mode`,
+          : `Invoice #${invoice.invoiceNumber} has been sent in testing mode to ${data?.recipient}`,
       });
       
-      if (!testModeInfo && data?.usedCustomDomain) {
+      if (!data?.testMode && data?.usedCustomDomain) {
         // Only navigate away if not in test mode
         navigate(`/invoices/${invoice.id}`);
       }
