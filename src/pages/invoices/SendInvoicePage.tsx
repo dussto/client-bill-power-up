@@ -1,4 +1,3 @@
-
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -93,6 +92,8 @@ export default function SendInvoicePage() {
         setIsLoadingDomains(true);
         const domains = await getUserDomains();
         
+        console.log("Loaded domains:", domains);
+        
         // Only set verified domains
         if (domains && domains.length > 0) {
           setVerifiedDomains(domains || []);
@@ -175,6 +176,11 @@ export default function SendInvoicePage() {
       ...emailData,
       [name]: value,
     });
+    
+    // Clear test mode info when domain changes
+    if (name === 'fromDomain') {
+      setTestModeInfo(null);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -183,6 +189,8 @@ export default function SendInvoicePage() {
     setTestModeInfo(null);
     
     try {
+      console.log("Sending invoice with domain:", emailData.fromDomain);
+      
       // Send the invoice via Supabase Edge Function
       const { data, error } = await supabase.functions.invoke('send-invoice', {
         body: {
@@ -199,6 +207,8 @@ export default function SendInvoicePage() {
           fromName: emailData.fromName,
         }
       });
+
+      console.log("Response from send-invoice:", data);
 
       if (error) {
         throw new Error(error.message);

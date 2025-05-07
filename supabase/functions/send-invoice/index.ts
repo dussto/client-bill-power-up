@@ -70,18 +70,21 @@ const handler = async (req: Request): Promise<Response> => {
     // Check if we should use a custom domain
     if (fromDomain && fromDomain !== "test") {
       try {
-        // Verify domain status with Resend
-        const domainResponse = await resend.domains.get(fromDomain);
-        console.log("Domain verification response:", JSON.stringify(domainResponse));
+        // Get all domains first to check if the requested domain exists and is verified
+        const domainsResponse = await resend.domains.list();
+        console.log("All domains:", JSON.stringify(domainsResponse));
         
-        if (domainResponse.data && domainResponse.data.status === 'verified') {
+        // Find the domain that matches the requested one
+        const domain = domainsResponse.data?.find(d => d.name === fromDomain);
+        
+        if (domain && domain.status === 'verified') {
           // Use custom domain if it's verified
           const senderName = fromName || 'Invoice Service';
           fromEmail = `${senderName} <invoices@${fromDomain}>`;
           isUsingCustomDomain = true;
           console.log("Using verified custom domain:", fromDomain);
         } else {
-          console.log("Domain is not verified yet:", fromDomain, "Status:", domainResponse?.data?.status);
+          console.log("Domain not found or not verified:", fromDomain, "Status:", domain?.status);
           // Not throwing error here, just using test mode instead
           fromEmail = `Invoice Creator <${verifiedEmail}>`;
           console.log("Domain not verified, falling back to test mode with:", fromEmail);
