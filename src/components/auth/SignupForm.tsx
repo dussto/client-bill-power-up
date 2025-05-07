@@ -1,19 +1,12 @@
-import { useState, useEffect } from "react";
+
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { Form } from "@/components/ui/form";
 import {
   Card,
   CardContent,
@@ -22,14 +15,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { ServicePackage } from "@/components/packages/PackageManager";
+import { SignupFormField } from "./SignupFormField";
+import { PackageSelect } from "./PackageSelect";
+import { usePackages } from "./usePackages";
 
 const signupSchema = z.object({
   fullName: z.string().min(2, { message: "Name must be at least 2 characters" }),
@@ -48,8 +36,7 @@ type SignupFormValues = z.infer<typeof signupSchema>;
 export default function SignupForm() {
   const { signup } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [packages, setPackages] = useState<ServicePackage[]>([]);
-  const [isLoadingPackages, setIsLoadingPackages] = useState(true);
+  const { packages, isLoadingPackages } = usePackages();
 
   const form = useForm<SignupFormValues>({
     resolver: zodResolver(signupSchema),
@@ -62,75 +49,6 @@ export default function SignupForm() {
       confirmPassword: "",
     },
   });
-
-  useEffect(() => {
-    // In a real app, we'd fetch this from the database
-    // For now, we're using the default packages
-    const fetchPackages = () => {
-      try {
-        // Get packages from localStorage
-        const storedPackages = localStorage.getItem('servicePackages');
-        if (storedPackages) {
-          const parsedPackages = JSON.parse(storedPackages);
-          setPackages(parsedPackages as ServicePackage[]);
-        } else {
-          // Default packages if none exist
-          const defaultPackages: ServicePackage[] = [
-            {
-              id: 'basic',
-              name: 'Basic',
-              description: 'Essential features for small businesses',
-              price: 9.99,
-              billingCycle: 'monthly',
-              features: {
-                stripeIntegration: false,
-                sendingDomains: 1,
-                serviceCreation: false,
-                paymentOptions: {
-                  offline: true,
-                  stripe: false,
-                },
-                paymentTerms: {
-                  oneOffs: true,
-                  monthly: false,
-                  annually: false,
-                },
-              },
-            },
-            {
-              id: 'pro',
-              name: 'Professional',
-              description: 'Advanced features for growing businesses',
-              price: 29.99,
-              billingCycle: 'monthly',
-              features: {
-                stripeIntegration: true,
-                sendingDomains: 3,
-                serviceCreation: true,
-                paymentOptions: {
-                  offline: true,
-                  stripe: true,
-                },
-                paymentTerms: {
-                  oneOffs: true,
-                  monthly: true,
-                  annually: false,
-                },
-              },
-            },
-          ];
-          localStorage.setItem('servicePackages', JSON.stringify(defaultPackages));
-          setPackages(defaultPackages);
-        }
-      } catch (error) {
-        console.error("Error fetching packages:", error);
-      } finally {
-        setIsLoadingPackages(false);
-      }
-    };
-
-    fetchPackages();
-  }, []);
 
   const onSubmit = async (values: SignupFormValues) => {
     try {
@@ -163,98 +81,44 @@ export default function SignupForm() {
       <CardContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
+            <SignupFormField
               control={form.control}
               name="fullName"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Full Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="John Smith" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+              label="Full Name"
+              placeholder="John Smith"
             />
-            <FormField
+            <SignupFormField
               control={form.control}
               name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Email</FormLabel>
-                  <FormControl>
-                    <Input type="email" placeholder="name@example.com" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+              label="Email"
+              placeholder="name@example.com"
+              type="email"
             />
-            <FormField
+            <SignupFormField
               control={form.control}
               name="company"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Company (Optional)</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Your Company" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+              label="Company"
+              placeholder="Your Company"
+              optional={true}
             />
-            <FormField
+            <PackageSelect
               control={form.control}
-              name="packageId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Package</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a package" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {isLoadingPackages ? (
-                        <SelectItem value="loading" disabled>Loading packages...</SelectItem>
-                      ) : (
-                        packages.map((pkg) => (
-                          <SelectItem key={pkg.id} value={pkg.id}>
-                            {pkg.name} - ${pkg.price}/{pkg.billingCycle === 'one-time' ? 'one-time' : pkg.billingCycle}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
+              isLoadingPackages={isLoadingPackages}
+              packages={packages}
             />
-            <FormField
+            <SignupFormField
               control={form.control}
               name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Password</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder="********" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+              label="Password"
+              placeholder="********"
+              type="password"
             />
-            <FormField
+            <SignupFormField
               control={form.control}
               name="confirmPassword"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Confirm Password</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder="********" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+              label="Confirm Password"
+              placeholder="********"
+              type="password"
             />
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? "Creating account..." : "Create Account"}
