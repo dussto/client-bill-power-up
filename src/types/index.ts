@@ -1,4 +1,3 @@
-
 export type User = {
   id: string;
   email: string;
@@ -6,6 +5,7 @@ export type User = {
   company?: string;
   address?: string;
   phone?: string;
+  packageId?: string;
 }
 
 export type Client = {

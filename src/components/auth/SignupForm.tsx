@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -23,8 +22,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ServicePackage } from "@/components/packages/PackageManager";
 
 const signupSchema = z.object({
@@ -68,10 +72,10 @@ export default function SignupForm() {
         const storedPackages = localStorage.getItem('servicePackages');
         if (storedPackages) {
           const parsedPackages = JSON.parse(storedPackages);
-          setPackages(parsedPackages);
+          setPackages(parsedPackages as ServicePackage[]);
         } else {
           // Default packages if none exist
-          const defaultPackages = [
+          const defaultPackages: ServicePackage[] = [
             {
               id: 'basic',
               name: 'Basic',
