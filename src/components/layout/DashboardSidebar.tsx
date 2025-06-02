@@ -16,7 +16,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 export default function DashboardSidebar() {
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
   
@@ -79,6 +79,11 @@ export default function DashboardSidebar() {
               <div className="ml-3">
                 <p className="text-sm font-medium">{user.fullName}</p>
                 <p className="text-xs text-gray-200 truncate max-w-[160px]">{user.email}</p>
+                {isAdmin && (
+                  <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full mt-1 inline-block">
+                    Admin
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -107,7 +112,7 @@ export default function DashboardSidebar() {
           <div className="p-4 border-t border-sidebar-border">
             <Button
               variant="outline"
-              className="w-full flex items-center justify-center text-sidebar-foreground border-sidebar-border hover:bg-sidebar-accent/50"
+              className="w-full flex items-center justify-center text-primary border-primary hover:bg-primary hover:text-primary-foreground"
               onClick={logout}
             >
               <LogOut className="h-4 w-4 mr-2" />

@@ -10,8 +10,11 @@ import { InvoiceSettingsTab } from '@/components/settings/InvoiceSettingsTab';
 import { PaymentSettingsTab } from '@/components/settings/PaymentSettingsTab';
 import { AccountSettingsTab } from '@/components/settings/AccountSettingsTab';
 import { EmailTemplatesTab } from '@/components/settings/EmailTemplatesTab';
+import { useAuth } from '@/context/AuthContext';
 
 export default function SettingsPage() {
+  const { isAdmin } = useAuth();
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -31,7 +34,7 @@ export default function SettingsPage() {
             <TabsTrigger value="email-templates">Email Templates</TabsTrigger>
             <TabsTrigger value="invoice">Invoice Settings</TabsTrigger>
             <TabsTrigger value="payment">Payment Settings</TabsTrigger>
-            <TabsTrigger value="packages">Packages</TabsTrigger>
+            {isAdmin && <TabsTrigger value="packages">Packages</TabsTrigger>}
             <TabsTrigger value="account">Account</TabsTrigger>
           </TabsList>
           
@@ -55,9 +58,11 @@ export default function SettingsPage() {
             <PaymentSettingsTab />
           </TabsContent>
           
-          <TabsContent value="packages">
-            <PackageManager />
-          </TabsContent>
+          {isAdmin && (
+            <TabsContent value="packages">
+              <PackageManager />
+            </TabsContent>
+          )}
           
           <TabsContent value="account" className="space-y-6">
             <AccountSettingsTab />

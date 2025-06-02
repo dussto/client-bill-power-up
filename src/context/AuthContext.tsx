@@ -3,12 +3,15 @@ import { createContext, useState, useContext, useEffect, ReactNode } from 'react
 import { useNavigate } from 'react-router-dom';
 import { User } from '@/types';
 import { useToast } from '@/components/ui/use-toast';
-import useUserRole from '@/components/auth/UserRole';
+import { supabase } from '@/integrations/supabase/client';
+import { Session } from '@supabase/supabase-js';
 
 interface AuthContextProps {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isAdmin: boolean;
+  hasActiveSubscription: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, fullName: string, company?: string, packageId?: string) => Promise<void>;
   logout: () => void;
@@ -18,43 +21,83 @@ const AuthContext = createContext<AuthContextProps | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
-    // Check for stored user data on component mount
-    const storedUser = localStorage.getItem('invoice_app_user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    setIsLoading(false);
+    // Set up auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        setSession(session);
+        if (session?.user) {
+          await fetchUserProfile(session.user.id);
+        } else {
+          setUser(null);
+        }
+        setIsLoading(false);
+      }
+    );
+
+    // Check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session?.user) {
+        fetchUserProfile(session.user.id);
+      } else {
+        setIsLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
+
+  const fetchUserProfile = async (authUserId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('auth_user_id', authUserId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching user profile:', error);
+        return;
+      }
+
+      if (data) {
+        setUser({
+          id: data.id,
+          email: data.email,
+          fullName: data.full_name,
+          company: data.company,
+          packageId: data.package_id,
+          role: data.role,
+          subscriptionStatus: data.subscription_status,
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    }
+  };
 
   const login = async (email: string, password: string) => {
     try {
       setIsLoading(true);
-      // Simulate authentication delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // In a real app, this would validate against a backend
-      if (email && password) {
-        const mockUser: User = {
-          id: `user-${Date.now()}`,
-          email,
-          fullName: email.split('@')[0],
-        };
-        
-        setUser(mockUser);
-        localStorage.setItem('invoice_app_user', JSON.stringify(mockUser));
-        toast({
-          title: "Login successful",
-          description: "Welcome back!",
-        });
-        navigate('/dashboard');
-      } else {
-        throw new Error('Invalid credentials');
-      }
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      
+      if (error) throw error;
+
+      toast({
+        title: "Login successful",
+        description: "Welcome back!",
+      });
+      navigate('/dashboard');
     } catch (error: any) {
       toast({
         title: "Login failed",
@@ -70,33 +113,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signup = async (email: string, password: string, fullName: string, company?: string, packageId?: string) => {
     try {
       setIsLoading(true);
-      // Simulate registration delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // In a real app, this would create a user in the backend
-      const mockUser: User = {
-        id: `user-${Date.now()}`,
+      const { data, error } = await supabase.auth.signUp({
         email,
-        fullName,
-        company,
-        packageId,
-      };
-      
-      setUser(mockUser);
-      localStorage.setItem('invoice_app_user', JSON.stringify(mockUser));
-      
-      // Store client data with selected package
-      const clientsData = localStorage.getItem('clients_data');
-      const clients = clientsData ? JSON.parse(clientsData) : [];
-      clients.push({
-        id: mockUser.id,
-        fullName,
-        email,
-        company,
-        packageId,
-        createdAt: new Date().toISOString(),
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`,
+          data: {
+            full_name: fullName,
+            company: company,
+            package_id: packageId,
+          }
+        }
       });
-      localStorage.setItem('clients_data', JSON.stringify(clients));
+      
+      if (error) throw error;
+
+      // Update user profile with additional information
+      if (data.user) {
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({
+            full_name: fullName,
+            company: company,
+            package_id: packageId,
+            subscription_status: packageId ? 'active' : 'inactive'
+          })
+          .eq('auth_user_id', data.user.id);
+
+        if (updateError) {
+          console.error('Error updating user profile:', updateError);
+        }
+      }
       
       toast({
         title: "Registration successful",
@@ -115,9 +163,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
-    localStorage.removeItem('invoice_app_user');
+    setSession(null);
     toast({
       title: "Logged out",
       description: "You've been successfully logged out.",
@@ -125,8 +174,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     navigate('/login');
   };
 
+  const isAdmin = user?.role === 'admin';
+  const hasActiveSubscription = user?.subscriptionStatus === 'active';
+
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, login, signup, logout }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      isAuthenticated: !!session, 
+      isLoading, 
+      isAdmin,
+      hasActiveSubscription,
+      login, 
+      signup, 
+      logout 
+    }}>
       {children}
     </AuthContext.Provider>
   );

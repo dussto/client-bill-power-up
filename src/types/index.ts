@@ -6,6 +6,8 @@ export type User = {
   address?: string;
   phone?: string;
   packageId?: string;
+  role?: 'admin' | 'user';
+  subscriptionStatus?: 'active' | 'inactive';
 }
 
 export type Client = {
