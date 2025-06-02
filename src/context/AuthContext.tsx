@@ -73,8 +73,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           fullName: data.full_name,
           company: data.company,
           packageId: data.package_id,
-          role: data.role,
-          subscriptionStatus: data.subscription_status,
+          role: data.role as 'admin' | 'user',
+          subscriptionStatus: data.subscription_status as 'active' | 'inactive',
         });
       }
     } catch (error) {
